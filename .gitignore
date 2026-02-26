@@ -1,4 +1,6 @@
 /target
 /result
+/site
 *.swp
 *.swo
+.llm/
