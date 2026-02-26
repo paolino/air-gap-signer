@@ -26,7 +26,7 @@ lint:
     cargo clippy --workspace --exclude echo-hex -- -D warnings
 
 # Full CI pipeline
-ci: format-check lint build build-wasm test
+ci: format-check lint build build-wasm test gerbers
 
 # Build documentation
 build-docs:
