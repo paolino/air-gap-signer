@@ -42,6 +42,7 @@ nav:
       - USB Protocol: architecture/usb-protocol.md
       - WASM Sandbox: architecture/wasm-sandbox.md
       - Signing Spec: architecture/signing-spec.md
+      - Secure Element: architecture/secure-element.md
   - Development:
       - Getting Started: dev/getting-started.md
       - Phases: dev/phases.md

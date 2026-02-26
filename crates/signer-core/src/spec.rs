@@ -54,7 +54,7 @@ pub struct SigningSpec {
     pub label: String,
     pub signable: Signable,
     pub algorithm: SignAlgorithm,
-    pub key_id: String,
+    pub key_slot: u8,
     pub output: OutputSpec,
 }
 
@@ -82,7 +82,7 @@ mod tests {
             label: "Cardano Transaction".into(),
             signable: Signable::Whole,
             algorithm: SignAlgorithm::Ed25519,
-            key_id: "payment-0".into(),
+            key_slot: 0,
             output: OutputSpec::SignatureOnly,
         };
         let cbor = spec.to_cbor().unwrap();
@@ -99,7 +99,7 @@ mod tests {
                 source: SignableSource::Whole,
             },
             algorithm: SignAlgorithm::Secp256k1Ecdsa,
-            key_id: "btc-main".into(),
+            key_slot: 1,
             output: OutputSpec::WasmAssemble,
         };
         let cbor = spec.to_cbor().unwrap();
@@ -116,7 +116,7 @@ mod tests {
                 length: 32,
             },
             algorithm: SignAlgorithm::Secp256k1Schnorr,
-            key_id: "key-1".into(),
+            key_slot: 2,
             output: OutputSpec::AppendToPayload,
         };
         let cbor = spec.to_cbor().unwrap();
@@ -136,7 +136,7 @@ mod tests {
                 },
             },
             algorithm: SignAlgorithm::Ed25519,
-            key_id: "staking-0".into(),
+            key_slot: 3,
             output: OutputSpec::SignatureOnly,
         };
         let cbor = spec.to_cbor().unwrap();

@@ -1,23 +1,22 @@
-use crate::spec::{HashAlgorithm, SignAlgorithm, Signable, SignableSource};
+use crate::spec::{HashAlgorithm, Signable, SignableSource};
 use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CryptoError {
-    #[error("signing error: {0}")]
-    Signing(String),
     #[error("range {offset}..{end} out of bounds (payload length {payload_len})")]
     RangeOutOfBounds {
         offset: usize,
         end: usize,
         payload_len: usize,
     },
-    #[error("unsupported algorithm: {0:?}")]
-    Unsupported(SignAlgorithm),
 }
 
 /// Extract the bytes to sign from the payload according to the Signable spec.
+///
+/// The result is the hash (or raw bytes) that gets sent to the secure element
+/// for signing. The Pi never handles private key material.
 pub fn extract_signable(payload: &[u8], signable: &Signable) -> Result<Vec<u8>, CryptoError> {
     match signable {
         Signable::Whole => Ok(payload.to_vec()),
@@ -75,51 +74,9 @@ fn hash_bytes(algo: HashAlgorithm, data: &[u8]) -> Vec<u8> {
     }
 }
 
-/// Sign bytes with the given algorithm and secret key.
-///
-/// For Ed25519: `secret_key` is the 32-byte seed.
-pub fn sign(
-    algorithm: SignAlgorithm,
-    secret_key: &[u8],
-    message: &[u8],
-) -> Result<Vec<u8>, CryptoError> {
-    match algorithm {
-        SignAlgorithm::Ed25519 => sign_ed25519(secret_key, message),
-        SignAlgorithm::Secp256k1Ecdsa => {
-            Err(CryptoError::Unsupported(SignAlgorithm::Secp256k1Ecdsa))
-        }
-        SignAlgorithm::Secp256k1Schnorr => {
-            Err(CryptoError::Unsupported(SignAlgorithm::Secp256k1Schnorr))
-        }
-    }
-}
-
-fn sign_ed25519(secret_key: &[u8], message: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    use ed25519_dalek::{Signer, SigningKey};
-    let key_bytes: [u8; 32] = secret_key
-        .try_into()
-        .map_err(|_| CryptoError::Signing("Ed25519 key must be 32 bytes".into()))?;
-    let signing_key = SigningKey::from_bytes(&key_bytes);
-    let signature = signing_key.sign(message);
-    Ok(signature.to_bytes().to_vec())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
-
-    #[test]
-    fn ed25519_sign_verify() {
-        let seed = [42u8; 32];
-        let signing_key = SigningKey::from_bytes(&seed);
-        let verifying_key: VerifyingKey = (&signing_key).into();
-
-        let message = b"hello air-gapped signer";
-        let sig_bytes = sign(SignAlgorithm::Ed25519, &seed, message).unwrap();
-        let signature = Signature::from_bytes(&sig_bytes.try_into().unwrap());
-        verifying_key.verify(message, &signature).unwrap();
-    }
 
     #[test]
     fn extract_whole() {

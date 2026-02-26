@@ -26,19 +26,21 @@
 - [ ] `HashThenSign` with Blake2b-256
 - [ ] Test with real Cardano testnet transactions
 
-## Phase 3: Key Management
+## Phase 3: Secure Element Integration
 
-- [ ] AES-256-GCM encrypted keystore
-- [ ] Argon2id PIN derivation
-- [ ] PIN entry UI
-- [ ] Key provisioning flow
-- [ ] Zeroize secrets on drop
+- [ ] ATECC608B driver over I2C (HAL `SecureElement` trait)
+- [ ] Key generation inside SE (private key never exported)
+- [ ] PIN verification with hardware retry lockout
+- [ ] Public key export via USB (for on-chain registration)
+- [ ] SE-side signing: Pi sends hash, SE returns signature
+- [ ] PIN entry UI (buttons + display)
+- [ ] Simulator mock SE (in-memory keys for desktop testing)
 
 ## Phase 4: Raspberry Pi HAL
 
-- [ ] `signer-pi` — framebuffer, GPIO buttons, USB mount, SD storage
+- [ ] `signer-pi` — framebuffer, GPIO buttons, USB mount, I2C secure element
 - [ ] Cross-compile aarch64-unknown-linux-musl
-- [ ] Test on physical Pi 4 with HDMI + buttons
+- [ ] Test on physical Pi 4 or Pi Zero 2W with display + buttons + ATECC608B
 
 ## Phase 5: Buildroot Image
 
@@ -51,5 +53,5 @@
 - [ ] Security audit
 - [ ] Secp256k1 ECDSA + Schnorr support
 - [ ] Read-only rootfs (squashfs)
-- [ ] Wipe-after-3-failures
-- [ ] Multiple key slots
+- [ ] Multiple key slots (up to 16 per SE)
+- [ ] Key slot labelling (associate slot with blockchain/purpose)

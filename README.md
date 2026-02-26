@@ -1,8 +1,8 @@
 # Air-Gapped Transaction Signer
 
-Blockchain-agnostic air-gapped signing device for Raspberry Pi 4.
+Blockchain-agnostic air-gapped signing device for Raspberry Pi (4 or Zero 2W).
 
-Transactions arrive on a USB stick, get displayed for human review, and are signed with keys that never leave the device. The USB stick carries a WASM interpreter that knows how to parse the specific transaction format — the signer itself only knows how to run WASM, render JSON, and sign bytes.
+Transactions arrive on a USB stick, get displayed for human review, and are signed by a hardware secure element (ATECC608B) that never exposes private keys. The USB stick carries a WASM interpreter that knows how to parse the specific transaction format — the signer itself only knows how to run WASM, render JSON, and send hashes to the secure element.
 
 ## How it works
 
@@ -10,10 +10,10 @@ Transactions arrive on a USB stick, get displayed for human review, and are sign
 USB stick contains:
   payload.bin        — raw transaction bytes
   interpreter.wasm   — WASM module: parse payload → JSON for display
-  sign.cbor          — signing spec: algorithm, key ID, what to sign
+  sign.cbor          — signing spec: algorithm, key slot, what to sign
 
 Device flow:
-  Boot → PIN → Decrypt keystore → Idle
+  Boot → PIN → Secure element unlocks → Idle
        → Insert USB → Run WASM → Display transaction → Confirm/Reject
        → Sign → Write signed.bin → Remove USB
 ```
@@ -21,6 +21,7 @@ Device flow:
 ## Properties
 
 - **Air-gapped** — no networking. Only USB mass storage for data transfer.
+- **Secure element** — private keys live in an ATECC608B chip. PIN retry lockout in hardware. Stolen SD card is worthless.
 - **Blockchain-agnostic** — WASM interpreters handle any transaction format.
 - **Sandboxed** — interpreters run with zero host imports, fuel-metered, memory-capped.
 - **Minimal** — Buildroot Linux, stripped kernel, binary as PID 1, read-only rootfs.
@@ -39,7 +40,7 @@ just serve-docs # local documentation at http://127.0.0.1:8000
 
 ```
 crates/
-  signer-core/     Pure logic: spec types, WASM sandbox, crypto, display
+  signer-core/     Pure logic: spec types, WASM sandbox, hash extraction, display
   signer-hal/      Hardware abstraction traits
   signer-pi/       Raspberry Pi implementation
   signer-sim/      Desktop simulator

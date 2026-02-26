@@ -9,10 +9,12 @@ struct SigningSpec {
     label: String,          // Human-readable label ("Cardano Transaction")
     signable: Signable,     // What bytes to sign
     algorithm: SignAlgorithm, // Which signing algorithm
-    key_id: String,         // Key identifier in the device keystore
+    key_slot: u8,           // Secure element key slot (0–15)
     output: OutputSpec,     // How to produce the output
 }
 ```
+
+The `key_slot` identifies which key slot in the secure element to use for signing. The device sends the hash to the secure element, which signs internally and returns the signature. The private key never leaves the chip.
 
 ## Signable
 
