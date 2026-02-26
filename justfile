@@ -40,6 +40,10 @@ serve-docs:
 deploy-docs:
     mkdocs gh-deploy --force
 
+# Generate SE050 breakout board Gerber files
+gerbers:
+    python3 generate_gerbers.py
+
 # Clean build artifacts
 clean:
     cargo clean
