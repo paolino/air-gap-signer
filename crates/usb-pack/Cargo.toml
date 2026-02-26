@@ -1,0 +1,16 @@
+[package]
+name = "usb-pack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI tool to prepare USB stick contents for air-gapped signing"
+
+[[bin]]
+name = "usb-pack"
+path = "src/main.rs"
+
+[dependencies]
+signer-core = { path = "../signer-core" }
+ciborium.workspace = true
+serde.workspace = true
+clap = { version = "4", features = ["derive"] }

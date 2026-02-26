@@ -1,0 +1,24 @@
+[package]
+name = "signer-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pure signing logic — spec types, WASM sandbox, crypto dispatch"
+
+[dependencies]
+ciborium.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+wasmtime.workspace = true
+ed25519-dalek.workspace = true
+k256.workspace = true
+blake2.workspace = true
+sha2.workspace = true
+sha3.workspace = true
+aes-gcm.workspace = true
+argon2.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+hex = "0.4"

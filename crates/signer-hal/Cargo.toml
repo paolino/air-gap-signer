@@ -1,0 +1,10 @@
+[package]
+name = "signer-hal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hardware abstraction traits for the air-gapped signer"
+
+[dependencies]
+signer-core = { path = "../signer-core" }
+thiserror.workspace = true
