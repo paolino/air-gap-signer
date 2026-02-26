@@ -1,0 +1,20 @@
+[package]
+name = "signer-sim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Desktop simulator for the air-gapped signer"
+
+[[bin]]
+name = "signer-sim"
+path = "src/main.rs"
+
+[dependencies]
+signer-core = { path = "../signer-core" }
+signer-hal = { path = "../signer-hal" }
+minifb.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+ed25519-dalek.workspace = true
