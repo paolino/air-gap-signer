@@ -34,3 +34,26 @@ usb-pack \
 6. Unmounts and signals completion
 
 The device never reads anything beyond the three expected files.
+
+## Setup USB protocol
+
+During first-time provisioning, the device uses **two separate USB sticks**:
+
+### Private USB (seed backup)
+
+| File | Purpose |
+|------|---------|
+| `seed.bin` | 32-byte Ed25519 seed (raw bytes) |
+
+- If `seed.bin` exists when inserted, the device **recovers** the key from it (import).
+- If `seed.bin` does not exist, the device **generates** a new key and writes `seed.bin`.
+- **Store this USB offline in a safe place.** It is the only way to recover funds if the device is lost or stolen.
+
+### Public USB (key export)
+
+| File | Purpose |
+|------|---------|
+| `pubkey.bin` | 32-byte Ed25519 public key (raw bytes) |
+
+- Written during setup after key generation/recovery.
+- Used to register the public key on-chain.

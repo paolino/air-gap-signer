@@ -47,22 +47,30 @@ sequenceDiagram
     participant SE as Secure Element
 
     Note over Pi,SE: First boot (provisioning)
-    User->>Pi: Set PIN (buttons)
-    Pi->>SE: Configure PIN policy (max 10 attempts)
-    Pi->>SE: Generate keypair in slot N
-    SE-->>SE: Private key stored internally
-    SE->>Pi: Public key
-    Pi->>Pi: Write public key to USB stick
-    User->>Pi: Remove USB (register pubkey on-chain)
+    User->>Pi: Set PIN + Confirm PIN (buttons)
+    Pi->>SE: set_pin(hash)
+    Pi->>SE: verify_pin(hash)
+    User->>Pi: Insert private USB
+    alt seed.bin exists on USB (recovery)
+        Pi->>SE: import_key(slot 0, seed)
+    else no seed on USB (fresh)
+        Pi->>SE: generate_key(slot 0)
+        SE-->>Pi: public key
+        Pi->>SE: export_seed(slot 0)
+        Pi->>Pi: Write seed.bin to private USB
+    end
+    User->>Pi: Remove private USB, insert public USB
+    Pi->>Pi: Write pubkey.bin to public USB
+    User->>Pi: Remove public USB — store private USB safely
 
     Note over Pi,SE: Normal boot
-    User->>Pi: Enter PIN (buttons)
-    Pi->>SE: Verify PIN
-    SE-->>Pi: OK (or lockout if attempts exceeded)
+    User->>Pi: Enter PIN (buttons, 4 digits)
+    Pi->>SE: verify_pin(hash)
+    SE-->>Pi: OK (or error if wrong PIN)
 
     Note over Pi,SE: Signing
     Pi->>Pi: Extract hash from payload (WASM + spec)
-    Pi->>SE: Sign(slot N, hash)
+    Pi->>SE: sign(slot N, hash)
     SE-->>SE: Sign internally
     SE->>Pi: Signature bytes
     Pi->>Pi: Write signature to USB
@@ -72,18 +80,30 @@ sequenceDiagram
 
 ```rust
 pub trait SecureElement {
-    /// Verify the user PIN. Returns remaining attempts on failure.
-    fn verify_pin(&mut self, pin: &[u8]) -> Result<(), SeError>;
+    /// Set the initial PIN during first-time setup.
+    fn set_pin(&mut self, pin: &[u8]) -> Result<(), HalError>;
+
+    /// Verify the user PIN.
+    fn verify_pin(&mut self, pin: &[u8]) -> Result<(), HalError>;
+
+    /// Check whether the device has been provisioned (PIN set, key generated).
+    fn is_provisioned(&self) -> bool;
 
     /// Generate a keypair in the given slot. Returns the public key.
-    fn generate_key(&mut self, slot: u8) -> Result<Vec<u8>, SeError>;
+    fn generate_key(&mut self, slot: u8) -> Result<Vec<u8>, HalError>;
 
     /// Sign a hash using the key in the given slot.
     /// Requires prior PIN verification in the same session.
-    fn sign(&mut self, slot: u8, hash: &[u8]) -> Result<Vec<u8>, SeError>;
+    fn sign(&mut self, slot: u8, hash: &[u8]) -> Result<Vec<u8>, HalError>;
 
     /// Read the public key from a slot.
-    fn public_key(&self, slot: u8) -> Result<Vec<u8>, SeError>;
+    fn public_key(&self, slot: u8) -> Result<Vec<u8>, HalError>;
+
+    /// Import an existing seed into a slot (recovery from backup).
+    fn import_key(&mut self, slot: u8, seed: &[u8]) -> Result<Vec<u8>, HalError>;
+
+    /// Export the seed for backup during provisioning.
+    fn export_seed(&self, slot: u8) -> Result<Vec<u8>, HalError>;
 }
 ```
 
@@ -92,6 +112,7 @@ pub trait SecureElement {
 | Threat | Mitigation |
 |--------|------------|
 | Stolen SD card | No secrets on SD — SE holds all keys |
+| Stolen device (no backup) | Seed exported to private USB during setup for recovery |
 | Stolen device (powered off) | PIN required on every boot, SE locks after N failures |
 | Stolen device (powered on) | Physical access to buttons required to confirm each signing |
 | Side-channel on Pi | Pi never handles raw key material — SE050 signs internally |

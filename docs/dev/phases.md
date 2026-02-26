@@ -14,9 +14,11 @@
 
 ## Phase 1: Desktop Simulator
 
-- [ ] `signer-sim` with minifb window + keyboard input
-- [ ] JSON rendering on simulated screen
-- [ ] End-to-end signing flow in simulator
+- [x] `signer-sim` with minifb window + keyboard input
+- [x] JSON rendering on simulated screen
+- [x] End-to-end signing flow in simulator
+- [x] Interactive setup flow: PIN entry, key generation/recovery, dual-USB export
+- [x] Simulated secure element with PIN hash, session state, save/load to JSON
 - [ ] `usb-pack` CLI for preparing test USB contents
 
 ## Phase 2: Cardano Interpreter
@@ -28,13 +30,14 @@
 
 ## Phase 3: Secure Element Integration
 
-- [ ] ATECC608B driver over I2C (HAL `SecureElement` trait)
+- [ ] SE050 driver over I2C (HAL `SecureElement` trait)
 - [ ] Key generation inside SE (private key never exported)
 - [ ] PIN verification with hardware retry lockout
-- [ ] Public key export via USB (for on-chain registration)
+- [x] Public key export via USB (for on-chain registration)
 - [ ] SE-side signing: Pi sends hash, SE returns signature
-- [ ] PIN entry UI (buttons + display)
-- [ ] Simulator mock SE (in-memory keys for desktop testing)
+- [x] PIN entry UI (buttons + display)
+- [x] Simulator mock SE (in-memory keys for desktop testing)
+- [x] Seed backup to private USB + recovery from existing seed
 
 ## Phase 4: Raspberry Pi HAL
 

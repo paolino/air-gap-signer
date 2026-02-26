@@ -27,6 +27,22 @@ just build-wasm  # Build WASM interpreters
 just test        # Run all tests (builds WASM first)
 ```
 
+## Desktop simulator
+
+```bash
+just sim         # Run simulator (creates keys.json on first run)
+```
+
+First run triggers the setup flow:
+
+1. **SET PIN** — enter 4-digit PIN with Up/Down + Enter
+2. **CONFIRM PIN** — re-enter to confirm
+3. **INSERT PRIVATE USB** — if `seed.bin` exists in the USB directory, the key is recovered; otherwise a new key is generated and `seed.bin` is written
+4. **INSERT PUBLIC USB** — `pubkey.bin` is written for on-chain registration
+5. **SETUP COMPLETE** — device enters the signing loop
+
+Subsequent runs skip setup and prompt for PIN entry directly.
+
 ## Full CI locally
 
 ```bash
