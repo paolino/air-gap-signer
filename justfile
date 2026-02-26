@@ -44,6 +44,10 @@ deploy-docs:
 gerbers:
     python3 generate_gerbers.py
 
+# Run desktop simulator
+sim usb_dir="./test-usb" keystore="./keys.json":
+    cargo run -p signer-sim -- --usb-dir {{usb_dir}} --keystore {{keystore}}
+
 # Clean build artifacts
 clean:
     cargo clean

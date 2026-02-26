@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/signer-core",
     "crates/signer-hal",
+    "crates/signer-sim",
     "crates/usb-pack",
     "interpreters/echo-hex",
 ]
@@ -21,6 +22,10 @@ wasmtime = { version = "28", default-features = false, features = ["cranelift", 
 blake2 = "0.10"
 sha2 = "0.10"
 sha3 = "0.10"
+minifb = "0.28"
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
 
 [profile.release]
 lto = true
