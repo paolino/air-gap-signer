@@ -27,6 +27,7 @@
             rust
             pkgs.just
             pkgs.wasmtime
+            pkgs.python3
           ];
         };
       });
