@@ -11,16 +11,15 @@ graph TD
     SIM --> CORE
     PI --> CORE
     CORE --> WT[wasmtime]
-    CORE --> ED[ed25519-dalek]
-    CORE --> K2[k256]
     CORE --> CIB[ciborium]
+    HAL --> SE[Secure Element<br/>ATECC608B via I2C]
 ```
 
 | Crate | Purpose |
 |-------|---------|
-| `signer-core` | Pure logic: spec types, WASM sandbox, crypto dispatch, keystore, display |
-| `signer-hal` | Trait definitions: `Display`, `Buttons`, `UsbMount`, `KeyStorage` |
-| `signer-pi` | Raspberry Pi implementation: linuxfb, gpiod, mount syscalls |
+| `signer-core` | Pure logic: spec types, WASM sandbox, display, hash extraction |
+| `signer-hal` | Trait definitions: `Display`, `Buttons`, `UsbMount`, `SecureElement` |
+| `signer-pi` | Raspberry Pi implementation: linuxfb, gpiod, mount, I2C secure element |
 | `signer-bin` | The PID 1 binary (state machine orchestrating everything) |
 | `signer-sim` | Desktop simulator using minifb window + keyboard |
 | `usb-pack` | CLI tool to prepare USB stick contents |
@@ -30,12 +29,12 @@ graph TD
 ```mermaid
 stateDiagram-v2
     [*] --> PinEntry: Boot
-    PinEntry --> Idle: PIN correct → decrypt keystore
+    PinEntry --> Idle: PIN verified by secure element
     Idle --> Loading: USB inserted
     Loading --> Displaying: WASM interpret → JSON
     Displaying --> Signing: User confirms
     Displaying --> Idle: User rejects
-    Signing --> Done: Write signed.bin
+    Signing --> Done: SE signs hash → write signed.bin
     Done --> Idle: USB removed
 ```
 

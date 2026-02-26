@@ -50,7 +50,22 @@ pub trait UsbMount {
     fn unmount(&mut self) -> Result<(), HalError>;
 }
 
-/// Persistent key storage (SD card partition).
-pub trait KeyStorage {
-    fn load_encrypted_keystore(&self) -> Result<Vec<u8>, HalError>;
+/// Hardware secure element (ATECC608B or similar).
+///
+/// Private keys are generated and stored inside the chip.
+/// The Pi never sees raw key material. PIN retry limits
+/// are enforced in hardware.
+pub trait SecureElement {
+    /// Verify the user PIN. Returns remaining attempts on failure.
+    fn verify_pin(&mut self, pin: &[u8]) -> Result<(), HalError>;
+
+    /// Generate a keypair in the given slot. Returns the public key.
+    fn generate_key(&mut self, slot: u8) -> Result<Vec<u8>, HalError>;
+
+    /// Sign a hash using the key in the given slot.
+    /// Requires prior PIN verification in the same session.
+    fn sign(&mut self, slot: u8, hash: &[u8]) -> Result<Vec<u8>, HalError>;
+
+    /// Read the public key from a slot.
+    fn public_key(&self, slot: u8) -> Result<Vec<u8>, HalError>;
 }

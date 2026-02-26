@@ -29,9 +29,9 @@ struct Cli {
     #[arg(long, default_value = "ed25519")]
     algorithm: String,
 
-    /// Key ID in the device keystore
+    /// Secure element key slot (0–15)
     #[arg(long)]
-    key_id: String,
+    key_slot: u8,
 
     /// Signable mode: whole, hash-blake2b, hash-sha256
     #[arg(long, default_value = "whole")]
@@ -82,7 +82,7 @@ fn main() {
         label: cli.label,
         signable: parse_signable(&cli.signable),
         algorithm: parse_algorithm(&cli.algorithm),
-        key_id: cli.key_id,
+        key_slot: cli.key_slot,
         output: parse_output_mode(&cli.output_mode),
     };
 
