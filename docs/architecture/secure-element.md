@@ -12,28 +12,31 @@ and never exports key material. A stolen SD card contains no secrets.
 
 ## Hardware
 
-**ATECC608B** (Microchip) — ~2 EUR, SOIC-8 or UDFN-8 package.
+**NXP SE050C1HQ1** — EdgeLock SE050, HX2QFN20 package (3×3 mm).
 
 - I2C interface (SDA/SCL on Pi GPIO 2/3)
-- 16 key slots, each with independent access policies
-- Hardware ECC P-256 key generation and signing
-- Monotonic counter for PIN attempts
-- Tamper detection (voltage/clock glitch protection)
-- Available on breakout boards for prototyping (Adafruit ATECC608)
+- Native Ed25519, secp256k1, and NIST P-256 support
+- Hardware key generation and signing — private key never leaves the chip
+- PIN retry policy enforced in hardware
+- Secure key storage with multiple slots
+- CC EAL6+ certified
 
-!!! note "Algorithm support"
-    The ATECC608B natively supports **ECDSA P-256** (secp256r1). For Ed25519
-    and secp256k1 (required by Cardano and Bitcoin), there are two paths:
+!!! note "Why SE050 over ATECC608B"
+    The ATECC608B (~2 EUR) only supports ECDSA P-256 natively. Cardano and
+    Bitcoin require Ed25519 / secp256k1, which would force the Pi to handle
+    raw key material in RAM. The SE050 (~5-10 EUR) signs natively with these
+    curves — the private key never reaches the Pi.
 
-    1. **ATECC608B as key vault** — store raw key bytes in a data slot with
-       read-protection. The Pi reads the slot after PIN verification, signs
-       in software, and zeroizes immediately. The SE enforces PIN retry
-       limits but doesn't do the signing itself.
-    2. **SE050 / Optiga Trust M** — higher-end secure elements with native
-       Ed25519 and secp256k1 support (~5-10 EUR). The chip does the signing.
+## Breakout board
 
-    Option 1 is simpler and cheaper. Option 2 is more secure (key never
-    reaches Pi RAM). Both are vastly better than encrypted-SD-card.
+A custom 20×20 mm breakout board connects the SE050 to the Pi via an 8-pin
+header. It includes decoupling caps, I2C pull-up resistors, and mounting
+holes.
+
+![SE050 breakout board render](../assets/se050-breakout-render.png)
+
+Generate Gerber files with `just gerbers` (see `generate_gerbers.py` for the
+full specification in `generate_gerbers.prompt.md`).
 
 ## Key lifecycle
 
@@ -91,6 +94,6 @@ pub trait SecureElement {
 | Stolen SD card | No secrets on SD — SE holds all keys |
 | Stolen device (powered off) | PIN required on every boot, SE locks after N failures |
 | Stolen device (powered on) | Physical access to buttons required to confirm each signing |
-| Side-channel on Pi | Pi never handles raw key material (option 2) |
-| Glitch attack on SE | ATECC608B has voltage/clock glitch detection |
+| Side-channel on Pi | Pi never handles raw key material — SE050 signs internally |
+| Glitch attack on SE | SE050 CC EAL6+ certified, tamper-resistant |
 | USB-borne malware | WASM sandbox: no host imports, fuel-limited, memory-capped |
