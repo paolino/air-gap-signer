@@ -18,8 +18,8 @@ struct Cli {
     #[arg(long)]
     usb_dir: PathBuf,
 
-    /// Path to plaintext keystore JSON file (maps slot numbers to hex seeds)
-    #[arg(long)]
+    /// Path to keystore JSON file (created automatically on first run)
+    #[arg(long, default_value = "keys.json")]
     keystore: PathBuf,
 }
 
@@ -52,10 +52,7 @@ impl signer_hal::Buttons for SimHal {
 fn main() {
     let cli = Cli::parse();
 
-    let mut se = keystore::SimSecureElement::from_file(&cli.keystore).unwrap_or_else(|e| {
-        eprintln!("keystore error: {e}");
-        std::process::exit(1);
-    });
+    let mut se = keystore::SimSecureElement::from_file_or_new(&cli.keystore);
 
     let sim_display = SimDisplay::new().unwrap_or_else(|e| {
         eprintln!("display error: {e}");
@@ -67,7 +64,7 @@ fn main() {
     };
     let mut usb = SimUsb::new(cli.usb_dir);
 
-    if let Err(e) = flow::run_loop(&mut hal, &mut usb, &mut se) {
+    if let Err(e) = flow::run(&mut hal, &mut usb, &mut se) {
         eprintln!("flow error: {e}");
         std::process::exit(1);
     }

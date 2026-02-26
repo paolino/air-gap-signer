@@ -72,6 +72,20 @@ impl UsbMount for SimUsb {
         fs::write(self.output_path(), data).map_err(|e| HalError::Usb(e.to_string()))
     }
 
+    fn read_file(&self, name: &str) -> Result<Option<Vec<u8>>, HalError> {
+        let path = self.dir.join(name);
+        if !path.exists() {
+            return Ok(None);
+        }
+        fs::read(&path)
+            .map(Some)
+            .map_err(|e| HalError::Usb(e.to_string()))
+    }
+
+    fn write_file(&mut self, name: &str, data: &[u8]) -> Result<(), HalError> {
+        fs::write(self.dir.join(name), data).map_err(|e| HalError::Usb(e.to_string()))
+    }
+
     fn unmount(&mut self) -> Result<(), HalError> {
         // no-op for directory simulation
         Ok(())

@@ -47,6 +47,10 @@ pub trait UsbMount {
     fn mount_readonly(&mut self) -> Result<(), HalError>;
     fn read_contents(&self) -> Result<UsbContents, HalError>;
     fn write_output(&mut self, data: &[u8]) -> Result<(), HalError>;
+    /// Read a named file from USB storage. Returns `None` if the file doesn't exist.
+    fn read_file(&self, name: &str) -> Result<Option<Vec<u8>>, HalError>;
+    /// Write a named file to USB storage.
+    fn write_file(&mut self, name: &str, data: &[u8]) -> Result<(), HalError>;
     fn unmount(&mut self) -> Result<(), HalError>;
 }
 
@@ -56,8 +60,14 @@ pub trait UsbMount {
 /// The Pi never sees raw key material. PIN retry limits
 /// are enforced in hardware.
 pub trait SecureElement {
+    /// Set the initial PIN during first-time setup.
+    fn set_pin(&mut self, pin: &[u8]) -> Result<(), HalError>;
+
     /// Verify the user PIN. Returns remaining attempts on failure.
     fn verify_pin(&mut self, pin: &[u8]) -> Result<(), HalError>;
+
+    /// Check whether the device has been provisioned (PIN set, key generated).
+    fn is_provisioned(&self) -> bool;
 
     /// Generate a keypair in the given slot. Returns the public key.
     fn generate_key(&mut self, slot: u8) -> Result<Vec<u8>, HalError>;
@@ -68,4 +78,11 @@ pub trait SecureElement {
 
     /// Read the public key from a slot.
     fn public_key(&self, slot: u8) -> Result<Vec<u8>, HalError>;
+
+    /// Import an existing seed into a slot (recovery from backup).
+    /// Returns the public key.
+    fn import_key(&mut self, slot: u8, seed: &[u8]) -> Result<Vec<u8>, HalError>;
+
+    /// Export the seed for backup during provisioning.
+    fn export_seed(&self, slot: u8) -> Result<Vec<u8>, HalError>;
 }

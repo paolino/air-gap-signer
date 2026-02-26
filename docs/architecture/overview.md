@@ -12,7 +12,7 @@ graph TD
     PI --> CORE
     CORE --> WT[wasmtime]
     CORE --> CIB[ciborium]
-    HAL --> SE[Secure Element<br/>ATECC608B via I2C]
+    HAL --> SE[Secure Element<br/>SE050 via I2C]
 ```
 
 | Crate | Purpose |
@@ -28,7 +28,21 @@ graph TD
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PinEntry: Boot
+    [*] --> CheckProvisioned: Boot
+    CheckProvisioned --> Setup: Not provisioned
+    CheckProvisioned --> PinEntry: Already provisioned
+
+    state Setup {
+        [*] --> SetPin: SET PIN + CONFIRM
+        SetPin --> PrivateUSB: Insert private USB
+        PrivateUSB --> Recovery: seed.bin found
+        PrivateUSB --> Generate: seed.bin missing
+        Recovery --> PublicUSB: Import key
+        Generate --> PublicUSB: Generate key + write seed.bin
+        PublicUSB --> [*]: Write pubkey.bin
+    }
+
+    Setup --> PinEntry: Setup complete
     PinEntry --> Idle: PIN verified by secure element
     Idle --> Loading: USB inserted
     Loading --> Displaying: WASM interpret → JSON
