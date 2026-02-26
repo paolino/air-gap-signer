@@ -1,0 +1,47 @@
+site_name: Air-Gapped Signer
+site_url: https://paolino.github.io/air-gap-signer/
+repo_url: https://github.com/paolino/air-gap-signer
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+  features:
+    - navigation.indexes
+    - navigation.sections
+    - navigation.path
+    - toc.integrate
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - tables
+  - footnotes
+  - def_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - USB Protocol: architecture/usb-protocol.md
+      - WASM Sandbox: architecture/wasm-sandbox.md
+      - Signing Spec: architecture/signing-spec.md
+  - Development:
+      - Getting Started: dev/getting-started.md
+      - Phases: dev/phases.md

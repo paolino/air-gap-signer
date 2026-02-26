@@ -28,6 +28,18 @@ lint:
 # Full CI pipeline
 ci: format-check lint build build-wasm test
 
+# Build documentation
+build-docs:
+    mkdocs build
+
+# Serve documentation locally
+serve-docs:
+    mkdocs serve
+
+# Deploy documentation to GitHub Pages
+deploy-docs:
+    mkdocs gh-deploy --force
+
 # Clean build artifacts
 clean:
     cargo clean
