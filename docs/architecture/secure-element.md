@@ -37,8 +37,9 @@ holes.
 
 ![SE050 breakout board render](../assets/se050-breakout-render.png)
 
-Generate Gerber files with `just gerbers` (see `generate_gerbers.py` for the
-full specification in `generate_gerbers.prompt.md`).
+Generate Gerber files with `just gerbers` (see
+`hardware/SE050_breakout/generate_gerbers.py` for the full specification in
+`hardware/SE050_breakout/generate_gerbers.prompt.md`).
 
 ## Key lifecycle
 
