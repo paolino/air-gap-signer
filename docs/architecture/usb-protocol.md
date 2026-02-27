@@ -33,7 +33,7 @@ usb-pack \
 5. After signing, remounts **read-write** to write `signed.bin`
 6. Unmounts and signals completion
 
-The device never reads anything beyond the three expected files.
+During signing, the device only reads these three files — nothing else.
 
 ## Setup USB protocol
 

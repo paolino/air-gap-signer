@@ -4,25 +4,28 @@
 
 ```mermaid
 graph TD
-    BIN[signer-bin<br/>PID 1 binary] --> HAL[signer-hal<br/>HW abstraction traits]
-    BIN --> CORE[signer-core<br/>Pure logic]
-    PI[signer-pi<br/>Pi HAL impl] --> HAL
-    SIM[signer-sim<br/>Desktop simulator] --> HAL
-    SIM --> CORE
-    PI --> CORE
+    SIM[signer-sim<br/>Desktop simulator] --> HAL[signer-hal<br/>HW abstraction traits]
+    SIM --> CORE[signer-core<br/>Pure logic]
     CORE --> WT[wasmtime]
     CORE --> CIB[ciborium]
     HAL --> SE[Secure Element<br/>SE050 via I2C]
+
+    BIN[signer-bin<br/>PID 1 binary]:::future --> HAL
+    BIN --> CORE
+    PI[signer-pi<br/>Pi HAL impl]:::future --> HAL
+    PI --> CORE
+
+    classDef future stroke-dasharray: 5 5
 ```
 
-| Crate | Purpose |
-|-------|---------|
-| `signer-core` | Pure logic: spec types, WASM sandbox, display, hash extraction |
-| `signer-hal` | Trait definitions: `Display`, `Buttons`, `UsbMount`, `SecureElement` |
-| `signer-pi` | Raspberry Pi implementation: linuxfb, gpiod, mount, I2C secure element |
-| `signer-bin` | The PID 1 binary (state machine orchestrating everything) |
-| `signer-sim` | Desktop simulator using minifb window + keyboard |
-| `usb-pack` | CLI tool to prepare USB stick contents |
+| Crate | Status | Purpose |
+|-------|--------|---------|
+| `signer-core` | done | Pure logic: spec types, WASM sandbox, display, hash extraction |
+| `signer-hal` | done | Trait definitions: `Display`, `Buttons`, `UsbMount`, `SecureElement` |
+| `signer-sim` | done | Desktop simulator: minifb window, keyboard, simulated SE with PIN + keystore |
+| `usb-pack` | stub | CLI tool to prepare USB stick contents |
+| `signer-pi` | Phase 4 | Raspberry Pi implementation: linuxfb, gpiod, mount, I2C SE050 |
+| `signer-bin` | Phase 4 | The PID 1 binary (state machine orchestrating everything) |
 
 ## Device flow
 
@@ -56,11 +59,11 @@ stateDiagram-v2
 
 WASM modules are carried on the USB stick alongside the transaction payload. Each blockchain ecosystem ships its own interpreter:
 
-| Interpreter | Format | Output |
-|-------------|--------|--------|
-| `echo-hex` | Any | Hex dump (testing) |
-| `cardano-cbor` | Cardano TX CBOR | Structured JSON (inputs, outputs, fee, metadata) |
-| `bitcoin-psbt` | Bitcoin PSBT | Structured JSON (inputs, outputs, fee) |
+| Interpreter | Status | Format | Output |
+|-------------|--------|--------|--------|
+| `echo-hex` | done | Any | Hex dump (testing) |
+| `cardano-cbor` | Phase 2 | Cardano TX CBOR | Structured JSON (inputs, outputs, fee, metadata) |
+| `bitcoin-psbt` | future | Bitcoin PSBT | Structured JSON (inputs, outputs, fee) |
 
 Interpreters are compiled to `wasm32-unknown-unknown` and must export:
 

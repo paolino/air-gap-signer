@@ -6,7 +6,6 @@
 - [x] `signer-core/spec.rs` — SigningSpec CBOR types
 - [x] `signer-core/wasm_sandbox.rs` — Wasmtime with fuel/memory limits
 - [x] `signer-core/crypto.rs` — Ed25519 signing + hash dispatch
-- [x] `signer-core/keystore.rs` — Plaintext keystore (dev only)
 - [x] `signer-core/display.rs` — JSON to display lines
 - [x] `signer-hal` — Hardware abstraction traits
 - [x] `echo-hex` WASM interpreter
@@ -43,7 +42,7 @@
 
 - [ ] `signer-pi` — framebuffer, GPIO buttons, USB mount, I2C secure element
 - [ ] Cross-compile aarch64-unknown-linux-musl
-- [ ] Test on physical Pi 4 or Pi Zero 2W with display + buttons + ATECC608B
+- [ ] Test on physical Pi 4 or Pi Zero 2W with display + buttons + SE050
 
 ## Phase 5: Buildroot Image
 

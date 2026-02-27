@@ -38,7 +38,8 @@ Requires [Nix](https://nixos.org/download/) with flakes enabled.
 
 ```bash
 nix develop
-just ci        # format, lint, build, test
+just ci         # format, lint, build, test
+just sim        # run desktop simulator (setup on first run)
 just serve-docs # local documentation at http://127.0.0.1:8000
 ```
 
@@ -48,15 +49,11 @@ just serve-docs # local documentation at http://127.0.0.1:8000
 crates/
   signer-core/     Pure logic: spec types, WASM sandbox, hash extraction, display
   signer-hal/      Hardware abstraction traits
-  signer-pi/       Raspberry Pi implementation
-  signer-sim/      Desktop simulator
-  signer-bin/      PID 1 binary
+  signer-sim/      Desktop simulator with simulated SE, PIN, keystore
   usb-pack/        CLI to prepare USB sticks
 
 interpreters/
   echo-hex/        Test interpreter (hex dump)
-
-buildroot/         Minimal Linux image
 ```
 
 ## Documentation
