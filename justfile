@@ -26,7 +26,7 @@ lint:
     cargo clippy --workspace --exclude echo-hex -- -D warnings
 
 # Full CI pipeline
-ci: format-check lint build build-wasm test gerbers
+ci: format-check lint build build-wasm test gerbers schematic
 
 # Build documentation
 build-docs:
@@ -43,6 +43,10 @@ deploy-docs:
 # Generate SE050 breakout board Gerber files
 gerbers:
     cd hardware/SE050_breakout && python3 generate_gerbers.py
+
+# Generate SE050 breakout board schematic SVG
+schematic:
+    cd hardware/SE050_breakout && python3 generate_schematic.py
 
 # Run desktop simulator
 sim usb_dir="./test-usb" keystore="./keys.json":

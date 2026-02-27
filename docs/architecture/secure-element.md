@@ -35,7 +35,7 @@ A custom 20×20 mm breakout board connects the SE050 to the Pi via an 8-pin
 header. It includes decoupling caps, I2C pull-up resistors, and mounting
 holes.
 
-![SE050 breakout board render](../assets/se050-breakout-render.png)
+![SE050 breakout board schematic](../assets/se050-breakout-schematic.svg)
 
 Generate Gerber files with `just gerbers` (see
 `hardware/SE050_breakout/generate_gerbers.py` for the full specification in
