@@ -7,8 +7,10 @@ brute-force. A 6-digit PIN has ~20 bits of entropy — a GPU rig cracks
 Argon2id-protected keys in hours.
 
 A hardware secure element solves this: the chip holds the private key
-internally, enforces PIN retry limits (e.g. lockout after 10 failures),
-and never exports key material. A stolen SD card contains no secrets.
+internally and enforces PIN retry limits (e.g. lockout after 10 failures).
+A stolen SD card contains no secrets. During provisioning the seed is
+exported once to a private USB stick for offline backup — after that
+the key lives only inside the chip.
 
 ## Hardware
 
@@ -112,9 +114,10 @@ pub trait SecureElement {
 | Threat | Mitigation |
 |--------|------------|
 | Stolen SD card | No secrets on SD — SE holds all keys |
-| Stolen device (no backup) | Seed exported to private USB during setup for recovery |
+| Lost/destroyed device | Seed backup on private USB allows full recovery on a new device |
 | Stolen device (powered off) | PIN required on every boot, SE locks after N failures |
 | Stolen device (powered on) | Physical access to buttons required to confirm each signing |
+| Stolen private USB | Contains raw seed — store offline in a safe, treat like a hardware wallet recovery phrase |
 | Side-channel on Pi | Pi never handles raw key material — SE050 signs internally |
 | Glitch attack on SE | SE050 CC EAL6+ certified, tamper-resistant |
 | USB-borne malware | WASM sandbox: no host imports, fuel-limited, memory-capped |

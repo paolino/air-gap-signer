@@ -62,14 +62,11 @@ just build-docs  # Build static site
 crates/
   signer-core/     # Pure logic (spec, WASM sandbox, crypto, display)
   signer-hal/      # Hardware abstraction traits
-  signer-pi/       # Raspberry Pi implementation (Phase 4)
-  signer-bin/      # PID 1 binary (Phase 4)
-  signer-sim/      # Desktop simulator (Phase 1)
+  signer-sim/      # Desktop simulator with simulated SE
   usb-pack/        # CLI to prepare USB sticks
 
 interpreters/
-  echo-hex/        # Trivial test interpreter (hex dump)
-  cardano-cbor/    # Cardano TX parser (Phase 2)
+  echo-hex/        # Test interpreter (hex dump)
 
 buildroot/         # Minimal Linux image (Phase 5)
 ```

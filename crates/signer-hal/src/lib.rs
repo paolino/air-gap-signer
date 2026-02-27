@@ -54,7 +54,7 @@ pub trait UsbMount {
     fn unmount(&mut self) -> Result<(), HalError>;
 }
 
-/// Hardware secure element (ATECC608B or similar).
+/// Hardware secure element (SE050 or similar).
 ///
 /// Private keys are generated and stored inside the chip.
 /// The Pi never sees raw key material. PIN retry limits
