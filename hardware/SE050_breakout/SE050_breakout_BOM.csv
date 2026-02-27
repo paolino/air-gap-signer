@@ -1,0 +1,7 @@
+Designator,Quantity,Value,Package,Description,Manufacturer,Manufacturer Part Number
+U1,1,SE050C1HQ1,HX2QFN20,"Secure Element, EdgeLock SE050",NXP,SE050C1HQ1/Z01SCZ
+C1,1,100nF,0402,"MLCC Capacitor 100nF 16V X5R",,
+C2,1,10uF,0402,"MLCC Capacitor 10uF 6.3V X5R",,
+R1,1,4.7k,0402,"Chip Resistor 4.7kOhm 1%",,
+R2,1,4.7k,0402,"Chip Resistor 4.7kOhm 1%",,
+J1,1,8-pin header,2.54mm pitch,"Pin Header 1x8 2.54mm Through-Hole",,

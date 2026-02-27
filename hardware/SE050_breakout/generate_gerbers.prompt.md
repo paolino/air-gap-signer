@@ -21,7 +21,7 @@ Generate a self-contained Python script that outputs complete RS-274X Gerber fil
 | C2 10uF 0402 | (7.0, 9.0) | Bulk cap |
 | R1 4.7k 0402 | (9.2, 7.5) | SDA pull-up |
 | R2 4.7k 0402 | (10.6, 7.5) | SCL pull-up |
-| J1 pin 1 | (1.11, 3.0) | 8-pin header, 2.54mm pitch, bottom edge |
+| J1 pin 1 | (1.11, 3.0) | 8-pin header, 2.54mm pitch: VCC, GND, SDA, SCL, ENA, RST_N, VIN, (unused) |
 | J1 pin 8 | (18.89, 3.0) | Last header pin |
 | M1-M4 | (2,2), (18,2), (2,18), (18,18) | 2.2mm NPTH mounting holes |
 
@@ -39,12 +39,34 @@ Generate a self-contained Python script that outputs complete RS-274X Gerber fil
 - Trace routing: Manhattan style (horizontal + vertical segments)
 
 ## Net connections
-- **VCC**: J1.1 → C2.1 → C1.1 → U1.pin8 (+ R1, R2 pull-up ends)
-- **GND**: J1.2 → C2.2 → C1.2 → U1.pin9 → U1.EP (via to bottom GND pour)
-- **SDA**: J1.3 → R1.1 → U1.pin1; R1.2 → VCC
-- **SCL**: J1.4 → R2.1 → U1.pin2; R2.2 → VCC
-- **ENA**: J1.5 → U1.pin7
-- **RST_N**: J1.6 → U1.pin13
+- **VCC**: J1.1 → C2.1 → C1.1 → U1.pin18 (+ R1, R2 pull-up ends)
+- **GND**: J1.2 → C2.2 → C1.2 → U1.pin19 → U1.EP (via to bottom GND pour)
+- **SDA**: J1.3 → R1.1 → U1.pin9; R1.2 → VCC
+- **SCL**: J1.4 → R2.1 → U1.pin10; R2.2 → VCC
+- **ENA**: J1.5 → U1.pin11
+- **RST_N**: J1.6 → U1.pin14
+- **VIN**: J1.7 → U1.pin12
+
+## Assembly files
+
+The script must also generate two CSV files for PCB assembly:
+
+### BOM (`SE050_breakout_BOM.csv`)
+Columns: `Designator,Quantity,Value,Package,Description,Manufacturer,Manufacturer Part Number`
+
+| Designator | Qty | Value | Package | Description | Manufacturer | MPN |
+|---|---|---|---|---|---|---|
+| U1 | 1 | SE050C1HQ1 | HX2QFN20 | Secure Element, EdgeLock SE050 | NXP | SE050C1HQ1/Z01SCZ |
+| C1 | 1 | 100nF | 0402 | MLCC Capacitor 100nF 16V X5R | | |
+| C2 | 1 | 10uF | 0402 | MLCC Capacitor 10uF 6.3V X5R | | |
+| R1 | 1 | 4.7k | 0402 | Chip Resistor 4.7kOhm 1% | | |
+| R2 | 1 | 4.7k | 0402 | Chip Resistor 4.7kOhm 1% | | |
+| J1 | 1 | 8-pin header | 2.54mm pitch | Pin Header 1x8 2.54mm Through-Hole | | |
+
+### Centroid / Pick-and-Place (`SE050_breakout_CPL.csv`)
+Columns: `Designator,Mid X (mm),Mid Y (mm),Layer,Rotation`
+
+Positions taken from the component placement table above. All components on Top layer, 0° rotation.
 
 ## Script structure
 Single file `generate_gerbers.py`:
@@ -54,7 +76,7 @@ Single file `generate_gerbers.py`:
 4. Define all component pad positions (absolute mm)
 5. Define trace routes as polyline segments
 6. Generate each layer by writing pads (D03 flash) + traces (D01/D02)
-7. Write 7 output files
+7. Write 7 output files + 2 assembly CSVs (BOM and CPL)
 
 ## Verification
 - Run: `just gerbers`

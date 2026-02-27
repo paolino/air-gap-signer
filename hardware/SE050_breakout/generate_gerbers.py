@@ -257,30 +257,33 @@ TRACES: list[list[tuple[float, float]]] = []
 # VCC net
 TRACES.append(manhattan_vert_first(*J1_PINS[0], *C2_P1))
 TRACES.append(manhattan_vert_first(*C2_P1, *C1_P1))
-TRACES.append(manhattan(*C1_P1, *QFN_BY_PIN[8]))
+TRACES.append(manhattan(*C1_P1, *QFN_BY_PIN[18]))
 TRACES.append(manhattan(*R1_P2, *C1_P1))
 TRACES.append(manhattan(*R2_P2, *R1_P2))
 
 # GND net
 TRACES.append(manhattan_vert_first(*J1_PINS[1], *C2_P2))
 TRACES.append(manhattan_vert_first(*C2_P2, *C1_P2))
-TRACES.append(manhattan(*C1_P2, *QFN_BY_PIN[9]))
-TRACES.append([(QFN_BY_PIN[9][0], QFN_BY_PIN[9][1]),
-               (IC_X, QFN_BY_PIN[9][1]), (IC_X, IC_Y)])
+TRACES.append(manhattan(*C1_P2, *QFN_BY_PIN[19]))
+TRACES.append([(QFN_BY_PIN[19][0], QFN_BY_PIN[19][1]),
+               (IC_X, QFN_BY_PIN[19][1]), (IC_X, IC_Y)])
 
 # SDA net
 TRACES.append(manhattan_vert_first(*J1_PINS[2], *R1_P1))
-TRACES.append(manhattan(*R1_P1, *QFN_BY_PIN[1]))
+TRACES.append(manhattan(*R1_P1, *QFN_BY_PIN[9]))
 
 # SCL net
 TRACES.append(manhattan_vert_first(*J1_PINS[3], *R2_P1))
-TRACES.append(manhattan(*R2_P1, *QFN_BY_PIN[2]))
+TRACES.append(manhattan(*R2_P1, *QFN_BY_PIN[10]))
 
 # ENA net
-TRACES.append(manhattan_vert_first(*J1_PINS[4], *QFN_BY_PIN[7]))
+TRACES.append(manhattan_vert_first(*J1_PINS[4], *QFN_BY_PIN[11]))
 
 # RST_N net
-TRACES.append(manhattan_vert_first(*J1_PINS[5], *QFN_BY_PIN[13]))
+TRACES.append(manhattan_vert_first(*J1_PINS[5], *QFN_BY_PIN[14]))
+
+# VIN net
+TRACES.append(manhattan_vert_first(*J1_PINS[6], *QFN_BY_PIN[12]))
 
 
 # ---------------------------------------------------------------------------

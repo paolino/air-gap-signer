@@ -42,7 +42,7 @@ deploy-docs:
 
 # Generate SE050 breakout board Gerber files
 gerbers:
-    python3 generate_gerbers.py
+    cd hardware/SE050_breakout && python3 generate_gerbers.py
 
 # Run desktop simulator
 sim usb_dir="./test-usb" keystore="./keys.json":
