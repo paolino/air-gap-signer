@@ -43,6 +43,7 @@ nav:
       - WASM Sandbox: architecture/wasm-sandbox.md
       - Signing Spec: architecture/signing-spec.md
       - Secure Element: architecture/secure-element.md
+      - Comparison: architecture/comparison.md
   - Development:
       - Getting Started: dev/getting-started.md
       - Phases: dev/phases.md
