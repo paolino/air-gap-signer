@@ -10,6 +10,7 @@ No external libraries required.
 
 from __future__ import annotations
 
+import math
 import os
 
 # ---------------------------------------------------------------------------
@@ -220,9 +221,11 @@ J1_PINS: list[tuple[float, float]] = [
     (J1_X_START + i * J1_PITCH, J1_Y) for i in range(8)
 ]
 
-# Mounting holes (NPTH)
-MOUNT_HOLES = [(2.0, 2.0), (18.0, 2.0), (2.0, 18.0), (18.0, 18.0)]
+# Mounting holes (NPTH). The lower pair sits above the header row and the
+# pin 1 trace; at y = 2.0 the drills overlapped header pins 1 and 8.
+MOUNT_HOLES = [(2.0, 11.0), (18.0, 11.0), (2.0, 18.0), (18.0, 18.0)]
 MOUNT_DRILL = 2.2
+MOUNT_MIN_CLEARANCE = 0.3  # mm, drill edge to any copper
 
 # GND vias near EP
 GND_VIAS = [
@@ -447,6 +450,42 @@ def gen_drill() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _segment_distance(px: float, py: float,
+                      a: tuple[float, float], b: tuple[float, float]) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length2 = dx * dx + dy * dy
+    t = 0.0 if length2 == 0 else max(
+        0.0, min(1.0, ((px - a[0]) * dx + (py - a[1]) * dy) / length2))
+    return math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy))
+
+
+def _rect_distance(px: float, py: float, cx: float, cy: float,
+                   w: float, h: float) -> float:
+    return math.hypot(max(abs(px - cx) - w / 2, 0.0),
+                      max(abs(py - cy) - h / 2, 0.0))
+
+
+def mount_clearance(px: float, py: float) -> float:
+    """Gap in mm from a mounting drill's edge to the nearest top copper
+    (traces, header pads, vias, QFN and 0402 pads); negative = overlap."""
+    gap = math.inf
+    for route in TRACES:
+        for a, b in zip(route, route[1:]):
+            gap = min(gap, _segment_distance(px, py, a, b) - TRACE_W / 2)
+    for x, y in J1_PINS:
+        gap = min(gap, math.hypot(px - x, py - y) - TH_PAD_D / 2)
+    for x, y in GND_VIAS:
+        gap = min(gap, math.hypot(px - x, py - y) - VIA_PAD_D / 2)
+    for x, y, ap, _m, _pin in QFN:
+        w, h = ((QFN_PAD_W, QFN_PAD_H) if ap == AP_QFN_VERT
+                else (QFN_PAD_H, QFN_PAD_W))
+        gap = min(gap, _rect_distance(px, py, x, y, w, h))
+    gap = min(gap, _rect_distance(px, py, *EP_POS, QFN_EP_W, QFN_EP_H))
+    for x, y in (C1_P1, C1_P2, C2_P1, C2_P2, R1_P1, R1_P2, R2_P1, R2_P2):
+        gap = min(gap, _rect_distance(px, py, x, y, P0402_W, P0402_H))
+    return gap - MOUNT_DRILL / 2
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -488,8 +527,16 @@ def main() -> None:
             if not data.rstrip().endswith("M02*"):
                 print(f"FAIL: {fname} does not end with M02*")
                 ok = False
+    for mx, my in MOUNT_HOLES:
+        gap = mount_clearance(mx, my)
+        if gap < MOUNT_MIN_CLEARANCE:
+            print(f"FAIL: mounting hole ({mx}, {my}) is {gap:.2f} mm from "
+                  f"copper, need {MOUNT_MIN_CLEARANCE} mm")
+            ok = False
     if ok:
         print("All checks passed.")
+    else:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
