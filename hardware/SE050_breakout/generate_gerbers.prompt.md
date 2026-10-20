@@ -23,7 +23,7 @@ Generate a self-contained Python script that outputs complete RS-274X Gerber fil
 | R2 4.7k 0402 | (10.6, 7.5) | SCL pull-up |
 | J1 pin 1 | (1.11, 3.0) | 8-pin header, 2.54mm pitch: VCC, GND, SDA, SCL, ENA, RST_N, VIN, (unused) |
 | J1 pin 8 | (18.89, 3.0) | Last header pin |
-| M1-M4 | (2,2), (18,2), (2,18), (18,18) | 2.2mm NPTH mounting holes |
+| M1-M4 | (2,11), (18,11), (2,18), (18,18) | 2.2mm NPTH mounting holes |
 
 ## QFN20 pad layout (relative to IC center)
 - 5 pads per side, 0.4mm pitch

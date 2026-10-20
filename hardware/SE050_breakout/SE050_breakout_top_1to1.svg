@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">
+<rect width="210" height="297" fill="white"/>
+<text x="15" y="15" font-family="sans-serif" font-size="3.5">SE050 breakout, top view, scale 1:1. Print at 100%, no fit to page.</text>
+<text x="15" y="21" font-family="sans-serif" font-size="3.5">Check: bar below = 50 mm; comb below = 8 holes at 2.54 mm pitch.</text>
+<g transform="translate(15 30) scale(1)"><svg x="0" y="0" width="20" height="20" viewBox="0 0 20 20">
+  <g transform="translate(0.0 20.0) scale(1 -1) translate(-0.0 -0.0)">
+    <rect x="9.08" y="8.25" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="9.48" y="8.25" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="9.88" y="8.25" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="10.28" y="8.25" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="10.68" y="8.25" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="8.25" y="9.08" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="8.25" y="9.48" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="8.25" y="9.88" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="8.25" y="10.28" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="8.25" y="10.68" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="10.68" y="11.05" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="10.28" y="11.05" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="9.88" y="11.05" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="9.48" y="11.05" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="9.08" y="11.05" width="0.24" height="0.7" fill="#b5b5b5"/>
+    <rect x="11.05" y="10.68" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="11.05" y="10.28" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="11.05" y="9.88" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="11.05" y="9.48" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="11.05" y="9.08" width="0.7" height="0.24" fill="#b5b5b5"/>
+    <rect x="9.15" y="9.15" width="1.7" height="1.7" fill="#b5b5b5"/>
+    <rect x="6.4" y="10.1" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="7.1" y="10.1" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="6.4" y="8.7" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="7.1" y="8.7" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="8.6" y="7.2" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="9.3" y="7.2" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="10.0" y="7.2" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <rect x="10.7" y="7.2" width="0.5" height="0.6" fill="#b5b5b5"/>
+    <circle cx="1.11" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="3.65" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="6.19" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="8.73" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="11.27" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="13.81" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="16.35" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="18.89" cy="3.0" r="0.8" fill="#b5b5b5"/>
+    <circle cx="9.5" cy="9.5" r="0.3" fill="#b5b5b5"/>
+    <circle cx="10.5" cy="9.5" r="0.3" fill="#b5b5b5"/>
+    <circle cx="9.5" cy="10.5" r="0.3" fill="#b5b5b5"/>
+    <circle cx="10.5" cy="10.5" r="0.3" fill="#b5b5b5"/>
+    <path d="M 1.11 3.0 L 1.11 9.0 L 6.65 9.0 L 6.65 10.4 L 6.65 10.4 L 11.4 10.4 L 11.4 10.0" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 9.55 7.5 L 6.65 7.5 L 6.65 10.4" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 10.95 7.5 L 9.55 7.5 L 9.55 7.5" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 3.65 3.0 L 3.65 9.0 L 7.35 9.0 L 7.35 10.4 L 7.35 10.4 L 11.4 10.4 L 11.4 9.6 L 10.0 9.6 L 10.0 10.0" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 6.19 3.0 L 6.19 7.5 L 8.85 7.5 L 8.6 7.5 L 8.6 10.4" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 8.73 3.0 L 8.73 7.5 L 10.25 7.5 L 8.6 7.5 L 8.6 10.8" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 11.27 3.0 L 11.27 11.4 L 10.8 11.4" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 13.81 3.0 L 13.81 11.4 L 9.6 11.4" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+    <path d="M 16.35 3.0 L 16.35 11.4 L 10.4 11.4" fill="none" stroke="#b5b5b5" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.2"/>
+  </g>
+
+  <g transform="translate(0.0 20.0) scale(1 -1) translate(-0.0 -0.0)">
+    <path d="M 8.5 8.5 L 11.5 8.5 L 11.5 11.5 L 8.5 11.5 L 8.5 8.5" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <circle cx="8.1" cy="8.1" r="0.15" fill="#000000"/>
+    <path d="M 6.45 10.05 L 7.55 10.05 L 7.55 10.75 L 6.45 10.75 L 6.45 10.05" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <path d="M 6.45 8.65 L 7.55 8.65 L 7.55 9.35 L 6.45 9.35 L 6.45 8.65" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <path d="M 8.65 7.15 L 9.75 7.15 L 9.75 7.85 L 8.65 7.85 L 8.65 7.15" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <path d="M 10.05 7.15 L 11.15 7.15 L 11.15 7.85 L 10.05 7.85 L 10.05 7.15" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <path d="M -0.39 1.5 L 20.39 1.5 L 20.39 4.5 L -0.39 4.5 L -0.39 1.5" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <path d="M 9.7 12.0 L 10.3 12.0" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+    <path d="M 10.0 11.7 L 10.0 12.3" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.15"/>
+  </g>
+
+  <g transform="translate(0.0 20.0) scale(1 -1) translate(-0.0 -0.0)">
+    <path d="M 0.0 0.0 L 20.0 0.0 L 20.0 20.0 L 0.0 20.0 L 0.0 0.0" fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="0.05"/>
+  </g>
+<circle cx="9.5" cy="10.5" r="0.15" fill="white" stroke="black" stroke-width="0.06"/><circle cx="10.5" cy="10.5" r="0.15" fill="white" stroke="black" stroke-width="0.06"/><circle cx="9.5" cy="9.5" r="0.15" fill="white" stroke="black" stroke-width="0.06"/><circle cx="10.5" cy="9.5" r="0.15" fill="white" stroke="black" stroke-width="0.06"/><circle cx="1.11" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M0.21000000000000008 17.0H2.0100000000000002M1.11 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="3.65" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M2.75 17.0H4.550000000000001M3.65 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="6.19" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M5.29 17.0H7.090000000000001M6.19 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="8.73" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M7.83 17.0H9.63M8.73 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="11.27" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M10.37 17.0H12.17M11.27 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="13.81" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M12.91 17.0H14.71M13.81 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="16.35" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M15.450000000000001 17.0H17.25M16.35 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="18.89" cy="17.0" r="0.5" fill="white" stroke="black" stroke-width="0.08"/><path d="M17.990000000000002 17.0H19.79M18.89 16.1V17.9" stroke="black" stroke-width="0.05"/><circle cx="2.0" cy="9.0" r="1.1" fill="white" stroke="black" stroke-width="0.08"/><path d="M0.4999999999999999 9.0H3.5M2.0 7.5V10.5" stroke="black" stroke-width="0.05"/><circle cx="18.0" cy="9.0" r="1.1" fill="white" stroke="black" stroke-width="0.08"/><path d="M16.5 9.0H19.5M18.0 7.5V10.5" stroke="black" stroke-width="0.05"/><circle cx="2.0" cy="2.0" r="1.1" fill="white" stroke="black" stroke-width="0.08"/><path d="M0.4999999999999999 2.0H3.5M2.0 0.4999999999999999V3.5" stroke="black" stroke-width="0.05"/><circle cx="18.0" cy="2.0" r="1.1" fill="white" stroke="black" stroke-width="0.08"/><path d="M16.5 2.0H19.5M18.0 0.4999999999999999V3.5" stroke="black" stroke-width="0.05"/></svg></g>
+<g stroke="black" stroke-width="0.2" transform="translate(15 270)"><line x1="0" y1="0" x2="0" y2="4"/><text x="0" y="8" font-size="3" stroke="none" text-anchor="middle" font-family="sans-serif">0 mm</text><line x1="1" y1="0" x2="1" y2="2"/><line x1="2" y1="0" x2="2" y2="2"/><line x1="3" y1="0" x2="3" y2="2"/><line x1="4" y1="0" x2="4" y2="2"/><line x1="5" y1="0" x2="5" y2="2"/><line x1="6" y1="0" x2="6" y2="2"/><line x1="7" y1="0" x2="7" y2="2"/><line x1="8" y1="0" x2="8" y2="2"/><line x1="9" y1="0" x2="9" y2="2"/><line x1="10" y1="0" x2="10" y2="4"/><text x="10" y="8" font-size="3" stroke="none" text-anchor="middle" font-family="sans-serif">10 mm</text><line x1="11" y1="0" x2="11" y2="2"/><line x1="12" y1="0" x2="12" y2="2"/><line x1="13" y1="0" x2="13" y2="2"/><line x1="14" y1="0" x2="14" y2="2"/><line x1="15" y1="0" x2="15" y2="2"/><line x1="16" y1="0" x2="16" y2="2"/><line x1="17" y1="0" x2="17" y2="2"/><line x1="18" y1="0" x2="18" y2="2"/><line x1="19" y1="0" x2="19" y2="2"/><line x1="20" y1="0" x2="20" y2="4"/><text x="20" y="8" font-size="3" stroke="none" text-anchor="middle" font-family="sans-serif">20 mm</text><line x1="21" y1="0" x2="21" y2="2"/><line x1="22" y1="0" x2="22" y2="2"/><line x1="23" y1="0" x2="23" y2="2"/><line x1="24" y1="0" x2="24" y2="2"/><line x1="25" y1="0" x2="25" y2="2"/><line x1="26" y1="0" x2="26" y2="2"/><line x1="27" y1="0" x2="27" y2="2"/><line x1="28" y1="0" x2="28" y2="2"/><line x1="29" y1="0" x2="29" y2="2"/><line x1="30" y1="0" x2="30" y2="4"/><text x="30" y="8" font-size="3" stroke="none" text-anchor="middle" font-family="sans-serif">30 mm</text><line x1="31" y1="0" x2="31" y2="2"/><line x1="32" y1="0" x2="32" y2="2"/><line x1="33" y1="0" x2="33" y2="2"/><line x1="34" y1="0" x2="34" y2="2"/><line x1="35" y1="0" x2="35" y2="2"/><line x1="36" y1="0" x2="36" y2="2"/><line x1="37" y1="0" x2="37" y2="2"/><line x1="38" y1="0" x2="38" y2="2"/><line x1="39" y1="0" x2="39" y2="2"/><line x1="40" y1="0" x2="40" y2="4"/><text x="40" y="8" font-size="3" stroke="none" text-anchor="middle" font-family="sans-serif">40 mm</text><line x1="41" y1="0" x2="41" y2="2"/><line x1="42" y1="0" x2="42" y2="2"/><line x1="43" y1="0" x2="43" y2="2"/><line x1="44" y1="0" x2="44" y2="2"/><line x1="45" y1="0" x2="45" y2="2"/><line x1="46" y1="0" x2="46" y2="2"/><line x1="47" y1="0" x2="47" y2="2"/><line x1="48" y1="0" x2="48" y2="2"/><line x1="49" y1="0" x2="49" y2="2"/><line x1="50" y1="0" x2="50" y2="4"/><text x="50" y="8" font-size="3" stroke="none" text-anchor="middle" font-family="sans-serif">50 mm</text></g>
+<g fill="none" stroke="black" stroke-width="0.2" transform="translate(110 275)"><circle cx="0.00" cy="0" r="0.5"/><circle cx="2.54" cy="0" r="0.5"/><circle cx="5.08" cy="0" r="0.5"/><circle cx="7.62" cy="0" r="0.5"/><circle cx="10.16" cy="0" r="0.5"/><circle cx="12.70" cy="0" r="0.5"/><circle cx="15.24" cy="0" r="0.5"/><circle cx="17.78" cy="0" r="0.5"/></g>
+</svg>
