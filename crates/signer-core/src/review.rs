@@ -1146,10 +1146,7 @@ mod tests {
         }
         assert_eq!(r.remaining(), 0);
         let (header, _, _) = level(&r);
-        assert!(
-            header.ends_with(" 2 waived"),
-            "{header}"
-        );
+        assert!(header.ends_with(" 2 waived"), "{header}");
         select(&mut r, "fee");
         assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
     }
