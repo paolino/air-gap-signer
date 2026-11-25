@@ -9,6 +9,10 @@ description = "Raspberry Pi HAL: framebuffer display and GPIO buttons"
 name = "signer-pi-demo"
 path = "src/bin/demo.rs"
 
+[[bin]]
+name = "signer-pi"
+path = "src/bin/signer-pi.rs"
+
 [dependencies]
 signer-core = { path = "../signer-core" }
 signer-hal = { path = "../signer-hal" }

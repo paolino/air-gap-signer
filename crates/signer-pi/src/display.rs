@@ -10,6 +10,8 @@ use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::path::{Path, PathBuf};
 
 const SIZE: usize = 240;
+/// Width of the cursor stripe at the right edge, in pixels.
+const CURSOR_WIDTH: usize = 4;
 
 /// Find the framebuffer device whose driver name is `name` by scanning
 /// `<sysfs>/fb*/name`. Linux numbers framebuffers in registration order,
@@ -26,6 +28,14 @@ pub fn find_framebuffer(sysfs: &Path, name: &str) -> Option<PathBuf> {
 
 /// Check, from its sysfs directory, that a framebuffer is the 240×240
 /// RGB565 panel this display draws for.
+/// Take the screen for this program alone, so two programs can never
+/// draw on it at once.
+pub fn lock_screen(file: &File, device: &Path) -> Result<(), HalError> {
+    file.try_lock().map_err(|_| {
+        HalError::Display(format!("{} is in use by another program", device.display()))
+    })
+}
+
 pub fn check_geometry(fb_sysfs: &Path) -> Result<(), HalError> {
     let expected = [
         ("bits_per_pixel", "16".to_string()),
@@ -60,8 +70,8 @@ pub struct FbDisplay {
     accent: Rgb,
     /// Rows that still need attention before Confirm counts.
     pending: Rgb,
-    /// Background of the review cursor row.
-    selected: Rgb,
+    /// The cursor stripe.
+    cursor: Rgb,
 }
 
 impl FbDisplay {
@@ -76,6 +86,7 @@ impl FbDisplay {
         }
         let err = |e: std::io::Error| HalError::Display(format!("{}: {e}", device.display()));
         let file = OpenOptions::new().write(true).open(device).map_err(err)?;
+        lock_screen(&file, device)?;
         if !file.metadata().map_err(err)?.file_type().is_char_device() {
             return Err(HalError::Display(format!(
                 "{} is not a framebuffer device",
@@ -107,12 +118,18 @@ impl FbDisplay {
             bg: Rgb(0, 0, 0),
             accent: Rgb(250, 190, 40),
             pending: Rgb(255, 110, 100),
-            selected: Rgb(40, 60, 110),
+            cursor: Rgb(250, 190, 40),
         }
     }
 
+    /// Columns whose glyphs, overhang included, all end before the
+    /// cursor stripe.
     fn cols(&self) -> usize {
-        SIZE / self.font.advance
+        let ink = self.font.ink_right.max(self.bold.ink_right);
+        match (SIZE - CURSOR_WIDTH).checked_sub(ink) {
+            Some(room) => room / self.font.advance + 1,
+            None => 0,
+        }
     }
 
     /// Rows whose glyphs, descenders included, all land on the panel.
@@ -188,17 +205,19 @@ impl signer_hal::Display for FbDisplay {
                 let h = self.font.line_height;
                 for (i, row) in rows.iter().enumerate() {
                     let y = (i + 1) * h;
-                    let bg = if row.selected { self.selected } else { self.bg };
-                    if row.selected {
-                        self.frame.fill_rect(0, y, SIZE, h, bg);
-                    }
                     let font = if row.expandable {
                         &self.bold
                     } else {
                         &self.font
                     };
                     let colour = if row.pending { self.pending } else { self.fg };
-                    self.frame.draw_text(font, &row.text, 0, y, colour, bg);
+                    self.frame.draw_text(font, &row.text, 0, y, colour, self.bg);
+                    if row.selected {
+                        // The cursor: a stripe in the right margin, past the
+                        // last column, so it never covers text.
+                        let x = SIZE - CURSOR_WIDTH;
+                        self.frame.fill_rect(x, y, CURSOR_WIDTH, h, self.cursor);
+                    }
                 }
             }
             View::Detail { header, rows } => {
@@ -275,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn review_cursor_row_is_highlighted() {
+    fn review_cursor_row_has_the_edge_stripe() {
         use signer_core::review::Row;
         use signer_hal::Display;
         let dir = tempfile::tempdir().unwrap();
@@ -298,13 +317,18 @@ mod tests {
             u16::from_le_bytes([bytes[2 * (y * SIZE + x)], bytes[2 * (y * SIZE + x) + 1]])
         };
         let h = d.font.line_height;
-        let selected = d.selected.to_565();
+        let cursor = d.cursor.to_565();
         assert_eq!(
             at(SIZE - 1, 2 * h + 1),
-            selected,
-            "row 2 (cursor) is highlighted"
+            cursor,
+            "row 2 (cursor) has the stripe"
         );
-        assert_eq!(at(SIZE - 1, h + 1), d.bg.to_565(), "row 1 is not");
+        assert_eq!(at(SIZE - 1, h + 1), d.bg.to_565(), "row 1 has not");
+        assert_eq!(
+            at(SIZE - CURSOR_WIDTH - 1, 2 * h + 1),
+            d.bg.to_565(),
+            "the stripe is only at the edge"
+        );
     }
 
     #[test]
@@ -384,6 +408,37 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_cursor_stripe_never_covers_text_at_any_font_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("frame");
+        for px in (8..=60).map(|p| p as f32).chain([10.2]) {
+            let d = FbDisplay::with_file(path.clone(), File::create(&path).unwrap(), px);
+            let last = (d.cols() - 1) * d.font.advance;
+            for font in [&d.font, &d.bold] {
+                assert!(
+                    last + font.ink_right <= SIZE - CURSOR_WIDTH,
+                    "size {px}: the last column inks to {}",
+                    last + font.ink_right
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_screen_already_in_use_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fb");
+        fs::write(&path, b"").unwrap();
+        let first = File::options().write(true).open(&path).unwrap();
+        let second = File::options().write(true).open(&path).unwrap();
+        assert!(lock_screen(&first, &path).is_ok());
+        assert!(
+            lock_screen(&second, &path).is_err(),
+            "a second program cannot draw at the same time"
+        );
     }
 
     #[test]

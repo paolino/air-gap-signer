@@ -49,6 +49,9 @@ validity_e…: 87654321
   it, or anything under it, has not been shown yet — an unread cut value,
   a group with fields not yet on screen — and white once it is done. The
   header is amber.
+- The cursor is an amber stripe at the right edge of its row, in the
+  margin past the last column, so it never covers text or changes its
+  colour.
 - The cursor stops on fields and on bold groups, never on a heading —
   unless the heading's name is cut and still has to be read.
 - A value too long for its row is **cut in the middle** with `…`,
@@ -69,7 +72,7 @@ validity_e…: 87654321
 
 | Control | In a level | In a value |
 |---|---|---|
-| joystick up / down | move the cursor to the previous / next field or bold group, skipping headings; wraps around at both ends | previous / next page |
+| joystick up / down | move the cursor to the previous / next field or bold group, skipping headings; wraps around at both ends; held, it repeats | previous / next page |
 | joystick right | on a bold group: go into it; on a value or a cut name: show it in full; on a heading: nothing | from a group's full name: go into it |
 | joystick left | back to the screen you came from, onto the row you left | back to the level |
 | button #5 | approve, once nothing is left to see | — |
@@ -138,3 +141,5 @@ in [#21](https://github.com/paolino/air-gap-signer/issues/21).
 | Spell out non-ASCII as `\u{hex}` | Draw it with the font | The font lacks most scripts; missing glyphs all look the same, so different values could look identical. |
 | List items as `_0`, `_1` | `[0]`, `[1]` | Tried on the device: lighter to read. An object key literally named `_0` would look like a list item; transaction fields are not named that way. |
 | Cursor skips headings | Cursor stops on every row | A heading is not a field and right does nothing on it. |
+| Cursor as an amber stripe at the right edge | Full-width bars (dark blue, light, amber, colour-inverted, grey), outline box, underline, left stripe, highlighter | Tried on the device and on camera: bars made text unreadable on camera; the stripe keeps every row's text and colour as is. |
+| Only up and down repeat when held | Every control repeats | A held button must never confirm, reject, open or go back by itself. |
