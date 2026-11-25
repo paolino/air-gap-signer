@@ -57,7 +57,14 @@ impl Se051 {
     pub fn open(bus: &str) -> Result<Self, HalError> {
         let dev = I2cdev::new(bus).map_err(|e| err("bus", e))?;
         let mut chip = Se05X::new_hal_10(Bus(dev), ADDRESS, Delay);
-        chip.enable().map_err(|e| err("enable", e))?;
+        // The driver can panic on a malformed answer (it divides by a
+        // timing value the chip sends); a faulty chip is an error, not a
+        // crash of the signer.
+        let enabled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| chip.enable()))
+            .map_err(|_| {
+                HalError::Storage("SE051 enable: malformed answer from the chip".into())
+            })?;
+        enabled.map_err(|e| err("enable", e))?;
         Ok(Self { chip })
     }
 
@@ -86,6 +93,31 @@ impl Se051 {
             .chip
             .run_command(&GetRandom { length: n.into() }, buf)
             .map_err(|e| err("random", e))?;
+        check_random(r.data, n)?;
         Ok(r.data.to_vec())
+    }
+}
+
+/// The driver does not check that the chip returned as many random
+/// bytes as asked; a short answer is an error.
+fn check_random(data: &[u8], asked: u16) -> Result<(), HalError> {
+    if data.len() != usize::from(asked) {
+        return Err(HalError::Storage(format!(
+            "SE051 random: {} bytes for {asked} asked",
+            data.len()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_short_random_answer_is_refused() {
+        assert!(check_random(&[0; 16], 16).is_ok());
+        assert!(check_random(&[0; 1], 16).is_err());
+        assert!(check_random(&[0; 17], 16).is_err());
     }
 }
