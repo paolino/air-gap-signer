@@ -8,10 +8,12 @@ set -euo pipefail
 host=$1; slot=${2:-3}
 # Quote each argument: ssh would drop an empty one (the empty message).
 pi() { ssh -o BatchMode=yes "$host" "sudo /tmp/se051-keys $(printf '%q ' "$@")"; }
-work=$(mktemp -d); trap 'rm -rf "$work"; pi delete "$slot" >/dev/null 2>&1 || true' EXIT
+work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 
-[ "$(pi public "$slot")" = empty ] || { echo "slot $slot is in use" >&2; exit 1; }
+[ "$(pi public "$slot")" = empty ] || { echo "slot $slot is in use; not touching it" >&2; exit 1; }
 public=$(pi create "$slot")
+# Only now is there a key of ours to erase, and only if it is still ours.
+trap 'rm -rf "$work"; [ "$(pi public "$slot" 2>/dev/null)" = "$public" ] && pi delete "$slot" >/dev/null' EXIT
 check_public=$(pi public "$slot")
 [ "$public" = "$check_public" ] || { echo "FAIL public key read back differs"; exit 1; }
 

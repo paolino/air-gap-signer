@@ -28,15 +28,21 @@ check() { # name, ours, theirs
   if [ "$2" = "$3" ] && [ -n "$2" ]; then echo "PASS $1"; else echo "FAIL $1: ours=$2 libfido2=$3"; fail=1; fi
 }
 
-# Control: a wrong PIN is refused by the signer's client (costs one try,
-# restored by the next right PIN).
+# Control: a wrong PIN is refused by the signer's client. It costs one
+# try, restored by the next right PIN; it runs only with tries to spare,
+# so it can never be the one that blocks the token.
 echo "  (no touch) wrong PIN, first, so the right PIN resets the counter after"
 # The probe fails on purpose here: capture, then look (pipefail).
-refused=$(FIDO_PIN=wrong-pin-0 "$probe" secret 00 "$salt" 2>&1 || true)
-if [ "$refused" = "wrong token PIN" ]; then
-  echo "PASS control: wrong PIN refused"
+tries=$("$probe" retries)
+if [ "$tries" -lt 4 ]; then
+  echo "SKIP control: only $tries PIN tries left; a right PIN first restores them"
 else
-  echo "FAIL control: wrong PIN"; fail=1
+  refused=$(FIDO_PIN=wrong-pin-0 "$probe" secret 00 "$salt" 2>&1 || true)
+  if [ "$refused" = "wrong token PIN" ]; then
+    echo "PASS control: wrong PIN refused"
+  else
+    echo "FAIL control: wrong PIN"; fail=1
+  fi
 fi
 
 echo "1/2 credential made by the signer's client"

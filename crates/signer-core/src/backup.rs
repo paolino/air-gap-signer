@@ -122,6 +122,8 @@ impl Backup {
         new: &mut dyn Token,
     ) -> Result<(), BackupError> {
         let file_key = self.file_key(enrolled)?;
+        // A new token is only worth adding if the seed itself opens.
+        self.open_seed(&file_key)?;
         self.enrol(&file_key, new)
     }
 
@@ -142,7 +144,13 @@ impl Backup {
     /// The seed, opened with `token`.
     pub fn restore(&self, token: &mut dyn Token) -> Result<Seed, BackupError> {
         let file_key = self.file_key(token)?;
-        let plain = open(&file_key, &self.nonce, &self.public_key, &self.sealed)?;
+        self.open_seed(&file_key)
+    }
+
+    /// The seed, opened with the file key and checked against the
+    /// public key the file names.
+    fn open_seed(&self, file_key: &[u8; 32]) -> Result<Seed, BackupError> {
+        let plain = open(file_key, &self.nonce, &self.public_key, &self.sealed)?;
         let seed: Seed = Zeroizing::new(
             plain
                 .as_slice()
@@ -348,6 +356,16 @@ mod tests {
         assert!(!bytes.windows(32).any(|w| w == *seed()), "seed in clear");
         let back = Backup::from_cbor(&bytes).unwrap();
         assert_eq!(*back.restore(&mut token(1)).unwrap(), *seed());
+    }
+
+    #[test]
+    fn a_damaged_backup_takes_no_new_token() {
+        let (mut a, mut b) = (token(1), token(2));
+        let mut backup = Backup::create(&seed(), &mut [&mut a]).unwrap();
+        backup.sealed[0] ^= 1;
+        let before = backup.clone();
+        assert_eq!(backup.add_token(&mut a, &mut b), Err(BackupError::Corrupt));
+        assert_eq!(backup, before, "left unchanged");
     }
 
     #[test]

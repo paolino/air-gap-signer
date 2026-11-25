@@ -12,6 +12,8 @@ use ciborium::Value;
 use std::io::{Read, Write};
 
 const REPORT: usize = 64;
+/// The longest CTAPHID message: an initial report and 128 continuations.
+const MAX_MESSAGE: usize = (REPORT - 7) + 128 * (REPORT - 5);
 const BROADCAST: [u8; 4] = [0xff; 4];
 const CMD_INIT: u8 = 0x86;
 const CMD_CBOR: u8 = 0x90;
@@ -32,7 +34,9 @@ pub enum FidoError {
     Protocol(String),
     #[error("wrong token PIN")]
     WrongPin,
-    #[error("token PIN blocked: reset the token or power-cycle it")]
+    #[error("too many wrong PINs: unplug the token and plug it back in")]
+    PinAuthBlocked,
+    #[error("token PIN blocked: only a token reset unblocks it, and a reset erases its credentials and the backup it holds")]
     PinBlocked,
     #[error("token said {0:#04x}")]
     Status(u8),
@@ -44,7 +48,10 @@ fn protocol(what: impl Into<String>) -> FidoError {
 
 /// Split `data` into CTAPHID reports for channel `cid`, each prefixed
 /// with the hidraw report id 0.
-pub fn frames(cid: [u8; 4], cmd: u8, data: &[u8]) -> Vec<[u8; REPORT + 1]> {
+pub fn frames(cid: [u8; 4], cmd: u8, data: &[u8]) -> Result<Vec<[u8; REPORT + 1]>, FidoError> {
+    if data.len() > MAX_MESSAGE {
+        return Err(protocol(format!("message of {} bytes", data.len())));
+    }
     let mut out = Vec::new();
     let mut first = [0u8; REPORT + 1];
     first[1..5].copy_from_slice(&cid);
@@ -60,7 +67,7 @@ pub fn frames(cid: [u8; 4], cmd: u8, data: &[u8]) -> Vec<[u8; REPORT + 1]> {
         f[6..6 + chunk.len()].copy_from_slice(chunk);
         out.push(f);
     }
-    out
+    Ok(out)
 }
 
 /// Read one CTAPHID message on `cid`, skipping keepalives (the token
@@ -77,6 +84,9 @@ pub fn receive(dev: &mut impl Read, cid: [u8; 4]) -> Result<(u8, Vec<u8>), FidoE
             continue;
         }
         let len = u16::from_be_bytes([report[5], report[6]]) as usize;
+        if len > MAX_MESSAGE {
+            return Err(protocol(format!("token message of {len} bytes")));
+        }
         let mut data = report[7..].to_vec();
         let mut seq = 0u8;
         while data.len() < len {
@@ -102,20 +112,34 @@ pub fn receive(dev: &mut impl Read, cid: [u8; 4]) -> Result<(u8, Vec<u8>), FidoE
 pub struct Device<D> {
     dev: D,
     cid: [u8; 4],
+    /// Large-blob fragment size: the token's message limit less 64.
+    fragment: usize,
 }
 
 impl<D: Read + Write> Device<D> {
     /// Allocate a channel on `dev`.
     pub fn init(mut dev: D) -> Result<Self, FidoError> {
         let nonce: [u8; 8] = rand::random();
-        for f in frames(BROADCAST, CMD_INIT, &nonce) {
+        for f in frames(BROADCAST, CMD_INIT, &nonce)? {
             dev.write_all(&f)?;
         }
         loop {
             let (cmd, data) = receive(&mut dev, BROADCAST)?;
             if cmd == CMD_INIT && data.len() >= 12 && data[..8] == nonce {
                 let cid = data[8..12].try_into().unwrap();
-                return Ok(Self { dev, cid });
+                let mut device = Self {
+                    dev,
+                    cid,
+                    fragment: fragment_size(None),
+                };
+                let info = device.cbor(GET_INFO, None)?;
+                device.fragment = fragment_size(
+                    field(&info, 5)
+                        .ok()
+                        .and_then(|v| v.as_integer())
+                        .and_then(|n| usize::try_from(n).ok()),
+                );
+                return Ok(device);
             }
         }
     }
@@ -126,7 +150,7 @@ impl<D: Read + Write> Device<D> {
         if let Some(r) = request {
             ciborium::into_writer(&r, &mut data).map_err(|e| protocol(e.to_string()))?;
         }
-        for f in frames(self.cid, CMD_CBOR, &data) {
+        for f in frames(self.cid, CMD_CBOR, &data)? {
             self.dev.write_all(&f)?;
         }
         let (cmd, data) = receive(&mut self.dev, self.cid)?;
@@ -136,7 +160,8 @@ impl<D: Read + Write> Device<D> {
         match data.split_first() {
             Some((0, rest)) => ciborium::from_reader(rest).map_err(|e| protocol(e.to_string())),
             Some((0x31, _)) => Err(FidoError::WrongPin),
-            Some((0x32 | 0x34, _)) => Err(FidoError::PinBlocked),
+            Some((0x32, _)) => Err(FidoError::PinBlocked),
+            Some((0x34, _)) => Err(FidoError::PinAuthBlocked),
             Some((status, _)) => Err(FidoError::Status(*status)),
             None => Err(protocol("empty reply")),
         }
@@ -146,14 +171,15 @@ impl<D: Read + Write> Device<D> {
     fn cbor_empty(&mut self, command: u8, request: Value) -> Result<(), FidoError> {
         let mut data = vec![command];
         ciborium::into_writer(&request, &mut data).map_err(|e| protocol(e.to_string()))?;
-        for f in frames(self.cid, CMD_CBOR, &data) {
+        for f in frames(self.cid, CMD_CBOR, &data)? {
             self.dev.write_all(&f)?;
         }
         let (_, data) = receive(&mut self.dev, self.cid)?;
         match data.first() {
             Some(0) => Ok(()),
             Some(0x31) => Err(FidoError::WrongPin),
-            Some(0x32 | 0x34) => Err(FidoError::PinBlocked),
+            Some(0x32) => Err(FidoError::PinBlocked),
+            Some(0x34) => Err(FidoError::PinAuthBlocked),
             Some(status) => Err(FidoError::Status(*status)),
             None => Err(protocol("empty reply")),
         }
@@ -228,6 +254,17 @@ impl<D: Read + Write> Device<D> {
         salt: Option<&[u8; 32]>,
         pin: &str,
     ) -> Result<Assertion, FidoError> {
+        Ok(self.assertions(id, salt, pin)?.remove(0))
+    }
+
+    /// Assertions for credential `id`, or for every resident credential
+    /// of this RP when `id` is `None` (needs the PIN and a touch).
+    pub fn assertions(
+        &mut self,
+        id: Option<&[u8]>,
+        salt: Option<&[u8; 32]>,
+        pin: &str,
+    ) -> Result<Vec<Assertion>, FidoError> {
         let (shared, auth) = self.pin_token(pin, PERMIT_GET_ASSERTION)?;
         let mut ext = Vec::new();
         if let Some(salt) = salt {
@@ -263,19 +300,44 @@ impl<D: Read + Write> Device<D> {
             (int(7), int(2)),
         ]);
         let reply = self.cbor(GET_ASSERTION, Some(map(request)))?;
-        let auth = bytes(field(&reply, 2)?)?;
+        let first = Self::parse_assertion(&reply, salt.is_some(), &shared)?;
+        // Without a credential id the token answers for each resident
+        // credential of this RP, one at a time.
+        let count = match id {
+            Some(_) => 1,
+            None => field(&reply, 5)
+                .ok()
+                .and_then(|v| v.as_integer())
+                .and_then(|n| usize::try_from(n).ok())
+                .unwrap_or(1),
+        };
+        let mut all = vec![first];
+        for _ in 1..count.min(64) {
+            let next = self.cbor(GET_NEXT_ASSERTION, None)?;
+            all.push(Self::parse_assertion(&next, salt.is_some(), &shared)?);
+        }
+        Ok(all)
+    }
+
+    /// The credential, secret and large-blob key in a get-assertion reply.
+    fn parse_assertion(
+        reply: &Value,
+        with_secret: bool,
+        shared: &Shared,
+    ) -> Result<Assertion, FidoError> {
+        let auth = bytes(field(reply, 2)?)?;
         if auth.len() < 37 || auth[32] & 0x04 == 0 {
             return Err(protocol("the token did not verify the PIN"));
         }
-        let credential_id = field(&reply, 1)?
+        let credential_id = field(reply, 1)?
             .as_map()
             .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some("id")))
             .and_then(|(_, v)| v.as_bytes())
             .cloned()
             .ok_or_else(|| protocol("no credential in the reply"))?;
-        let secret = match salt {
-            None => None,
-            Some(_) => {
+        let secret = match with_secret {
+            false => None,
+            true => {
                 if auth[32] & 0x80 == 0 {
                     return Err(protocol("no extension output"));
                 }
@@ -294,7 +356,7 @@ impl<D: Read + Write> Device<D> {
                 )
             }
         };
-        let large_blob_key = match field(&reply, 7) {
+        let large_blob_key = match field(reply, 7) {
             Ok(v) => Some(
                 bytes(v)?
                     .try_into()
@@ -314,13 +376,16 @@ impl<D: Read + Write> Device<D> {
         let mut out = Vec::new();
         loop {
             let request = map(vec![
-                (int(1), int(FRAGMENT as i64)),
+                (int(1), int(self.fragment as i64)),
                 (int(3), int(out.len() as i64)),
             ]);
             let reply = self.cbor(LARGE_BLOBS, Some(request))?;
             let part = bytes(field(&reply, 1)?)?;
+            if part.len() > self.fragment || out.len() + part.len() > MAX_BLOBS {
+                return Err(protocol("the token's blob storage is larger than expected"));
+            }
             out.extend_from_slice(part);
-            if part.len() < FRAGMENT {
+            if part.len() < self.fragment {
                 return Ok(out);
             }
         }
@@ -330,8 +395,8 @@ impl<D: Read + Write> Device<D> {
     pub fn write_blobs(&mut self, array: &[u8], pin: &str) -> Result<(), FidoError> {
         use sha2::{Digest, Sha256};
         let (_, auth) = self.pin_token(pin, PERMIT_LARGE_BLOB_WRITE)?;
-        for (i, part) in array.chunks(FRAGMENT).enumerate() {
-            let offset = (i * FRAGMENT) as u32;
+        for (i, part) in array.chunks(self.fragment).enumerate() {
+            let offset = (i * self.fragment) as u32;
             let message = [
                 &[0xffu8; 32][..],
                 &[LARGE_BLOBS, 0x00],
@@ -363,19 +428,26 @@ impl<D: Read + Write> Device<D> {
             .large_blob_key
             .ok_or_else(|| protocol("the credential has no large-blob key"))?;
         let array = self.read_blobs()?;
-        self.write_blobs(&crate::large_blob::write(&array, &key, backup), pin)
+        let array =
+            crate::large_blob::write(&array, &key, backup).map_err(|e| protocol(e.to_string()))?;
+        self.write_blobs(&array, pin)
     }
 
     /// The backup stored in the token, with the credential holding it
     /// (needs the PIN and a touch).
     pub fn load_backup(&mut self, pin: &str) -> Result<(Vec<u8>, Vec<u8>), FidoError> {
-        let a = self.assert(None, None, pin)?;
-        let key = a
-            .large_blob_key
-            .ok_or_else(|| protocol("the credential has no large-blob key"))?;
+        // Several resident credentials can exist (an enrolment that was
+        // interrupted before its backup was stored): use the first one
+        // that has a backup.
+        let all = self.assertions(None, None, pin)?;
         let array = self.read_blobs()?;
-        let backup = crate::large_blob::read(&array, &key).map_err(|e| protocol(e.to_string()))?;
-        Ok((a.credential_id, backup))
+        all.into_iter()
+            .find_map(|a| {
+                let key = a.large_blob_key?;
+                let backup = crate::large_blob::read(&array, &key).ok()?;
+                Some((a.credential_id, backup))
+            })
+            .ok_or_else(|| protocol(crate::large_blob::BlobError::Missing.to_string()))
     }
 
     /// Tries left before the token blocks its PIN.
@@ -393,9 +465,8 @@ impl<D: Read + Write> Device<D> {
     /// A PIN/UV auth token for `permissions` on this RP, proving `pin`;
     /// with the shared secret it was agreed under.
     fn pin_token(&mut self, pin: &str, permissions: u8) -> Result<(Shared, PinToken), FidoError> {
-        use sha2::{Digest, Sha256};
         let shared = self.key_agreement()?;
-        let pin_hash = Sha256::digest(pin.as_bytes());
+        let pin_hash = pin_hash(pin);
         let request = map(vec![
             (int(1), int(2)),
             (int(2), int(9)),
@@ -424,8 +495,26 @@ const PERMIT_MAKE_CREDENTIAL: u8 = 0x01;
 const PERMIT_GET_ASSERTION: u8 = 0x02;
 const PERMIT_LARGE_BLOB_WRITE: u8 = 0x10;
 const LARGE_BLOBS: u8 = 0x0c;
-/// Large-blob fragment size, well under the token's message size.
-const FRAGMENT: usize = 1024;
+const GET_INFO: u8 = 0x04;
+const GET_NEXT_ASSERTION: u8 = 0x08;
+/// The most large-blob data read from a token.
+const MAX_BLOBS: usize = 64 * 1024;
+
+/// Large-blob fragment size for a token whose message limit is
+/// `max_msg_size` (CTAP 2.1: maxMsgSize − 64, 1024 when not advertised).
+fn fragment_size(max_msg_size: Option<usize>) -> usize {
+    max_msg_size
+        .unwrap_or(1024)
+        .clamp(128, MAX_MESSAGE)
+        .saturating_sub(64)
+}
+
+/// The PIN as the token expects it hashed: Unicode NFC.
+fn pin_hash(pin: &str) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    use unicode_normalization::UnicodeNormalization;
+    Sha256::digest(pin.nfc().collect::<String>().as_bytes()).into()
+}
 
 /// What a get-assertion returned.
 pub struct Assertion {
@@ -597,7 +686,7 @@ mod tests {
     fn a_long_message_is_split_and_reassembled() {
         let cid = [1, 2, 3, 4];
         let data: Vec<u8> = (0..200u8).collect();
-        let fs = frames(cid, CMD_CBOR, &data);
+        let fs = frames(cid, CMD_CBOR, &data).unwrap();
         assert_eq!(fs.len(), 4, "57 + 59 + 59 + 25");
         assert!(fs.iter().all(|f| f[0] == 0), "report id 0 first");
         // What the token would send back: the same reports without the id,
@@ -619,7 +708,7 @@ mod tests {
     #[test]
     fn a_token_error_is_reported() {
         let cid = [1, 2, 3, 4];
-        let wire: Vec<u8> = frames(cid, CMD_ERROR, &[0x06])[0][1..].to_vec();
+        let wire: Vec<u8> = frames(cid, CMD_ERROR, &[0x06]).unwrap()[0][1..].to_vec();
         assert!(matches!(
             receive(&mut wire.as_slice(), cid),
             Err(FidoError::Status(6))
@@ -638,5 +727,46 @@ mod tests {
         }
         assert_eq!(find_token(&dir), Some("/dev/hidraw3".into()));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_oversized_token_message_is_refused() {
+        let cid = [1, 2, 3, 4];
+        let mut first = [0u8; REPORT];
+        first[..4].copy_from_slice(&cid);
+        first[4] = CMD_CBOR;
+        first[5..7].copy_from_slice(&((MAX_MESSAGE + 1) as u16).to_be_bytes());
+        assert!(matches!(
+            receive(&mut first.as_slice(), cid),
+            Err(FidoError::Protocol(_))
+        ));
+        assert!(frames(cid, CMD_CBOR, &vec![0; MAX_MESSAGE + 1]).is_err());
+        let longest = vec![7u8; MAX_MESSAGE];
+        let fs = frames(cid, CMD_CBOR, &longest).unwrap();
+        assert_eq!(fs.len(), 129, "an initial report and 128 continuations");
+        let wire: Vec<u8> = fs.iter().flat_map(|f| f[1..].to_vec()).collect();
+        assert_eq!(receive(&mut wire.as_slice(), cid).unwrap().1, longest);
+    }
+
+    #[test]
+    fn the_pin_is_hashed_in_nfc() {
+        // "é" precomposed and as "e" + combining acute accent.
+        assert_eq!(pin_hash("caf\u{e9}1"), pin_hash("cafe\u{301}1"));
+        assert_ne!(pin_hash("cafe1"), pin_hash("caf\u{e9}1"));
+    }
+
+    #[test]
+    fn the_fragment_follows_the_tokens_message_limit() {
+        assert_eq!(fragment_size(None), 960, "CTAP default 1024 - 64");
+        assert_eq!(fragment_size(Some(2048)), 1984);
+        assert_eq!(fragment_size(Some(0)), 64, "a silly value stays usable");
+    }
+
+    #[test]
+    fn temporary_and_permanent_pin_locks_say_different_things() {
+        let temporary = FidoError::PinAuthBlocked.to_string();
+        let permanent = FidoError::PinBlocked.to_string();
+        assert!(temporary.contains("plug it back in") && !temporary.contains("reset"));
+        assert!(permanent.contains("erases"));
     }
 }

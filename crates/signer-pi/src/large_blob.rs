@@ -99,15 +99,15 @@ pub fn read(bytes: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, BlobError> {
 }
 
 /// `bytes` with the entry for `key` replaced by `data`, other entries
-/// kept. Damaged storage starts over empty.
-pub fn write(bytes: &[u8], key: &[u8; 32], data: &[u8]) -> Vec<u8> {
-    let mut entries: Vec<Value> = parse(bytes)
-        .unwrap_or_default()
+/// kept. Damaged storage is refused, never overwritten: other apps'
+/// entries in it may still be recoverable.
+pub fn write(bytes: &[u8], key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, BlobError> {
+    let mut entries: Vec<Value> = parse(bytes)?
         .into_iter()
         .filter(|e| open(key, e).is_none())
         .collect();
     entries.push(seal(key, data));
-    serialize(&entries)
+    Ok(serialize(&entries))
 }
 
 #[cfg(test)]
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn a_backup_is_written_and_read_back() {
         let key = [3u8; 32];
-        let bytes = write(&serialize(&[]), &key, b"the backup");
+        let bytes = write(&serialize(&[]), &key, b"the backup").unwrap();
         assert_eq!(read(&bytes, &key), Ok(b"the backup".to_vec()));
         assert_eq!(read(&bytes, &[4u8; 32]), Err(BlobError::Missing));
     }
@@ -135,9 +135,9 @@ mod tests {
     #[test]
     fn writing_again_replaces_ours_and_keeps_the_others() {
         let (ours, theirs) = ([3u8; 32], [4u8; 32]);
-        let bytes = write(&serialize(&[]), &theirs, b"another app");
-        let bytes = write(&bytes, &ours, b"v1");
-        let bytes = write(&bytes, &ours, b"v2");
+        let bytes = write(&serialize(&[]), &theirs, b"another app").unwrap();
+        let bytes = write(&bytes, &ours, b"v1").unwrap();
+        let bytes = write(&bytes, &ours, b"v2").unwrap();
         assert_eq!(parse(&bytes).unwrap().len(), 2);
         assert_eq!(read(&bytes, &ours), Ok(b"v2".to_vec()));
         assert_eq!(read(&bytes, &theirs), Ok(b"another app".to_vec()));
@@ -145,9 +145,14 @@ mod tests {
 
     #[test]
     fn a_damaged_array_is_refused() {
-        let mut bytes = write(&serialize(&[]), &[3u8; 32], b"x");
+        let mut bytes = write(&serialize(&[]), &[3u8; 32], b"x").unwrap();
         bytes[2] ^= 1;
         assert_eq!(read(&bytes, &[3u8; 32]), Err(BlobError::Corrupt));
+        assert_eq!(
+            write(&bytes, &[3u8; 32], b"y"),
+            Err(BlobError::Corrupt),
+            "not overwritten"
+        );
         assert_eq!(parse(&[0x80]), Err(BlobError::Corrupt));
     }
 }

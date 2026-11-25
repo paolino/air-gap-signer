@@ -42,9 +42,17 @@ read -r got_id got_data < <("$probe" blob-get)
 check "the signer finds its credential without being told" "$got_id" "$id"
 check "the signer reads what libfido2 wrote" "$got_data" "$(xxd -p -c999 "$work/b")"
 
-echo "cleanup: delete the blob and the credential (libfido2)"
+echo "3/3 an interrupted enrolment: a second credential with no backup"
+id2=$("$probe" enrol)
+id2b=$(echo "$id2" | b64)
+read -r got_id got_data < <("$probe" blob-get)
+check "the signer finds the backup under the older credential" "$got_id" "$id"
+check "and reads it" "$got_data" "$(xxd -p -c999 "$work/b")"
+
+echo "cleanup: delete the blob and both credentials (libfido2)"
 fido2-token -D -b -n "$rp" -i "$idb" "$dev"
 fido2-token -D -i "$idb" "$dev"
+fido2-token -D -i "$id2b" "$dev"
 after=$(ours)
 check "no credential left behind" "none" "${after:-none}"
 # Control: with the credential gone the signer must find none.
