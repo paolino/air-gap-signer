@@ -82,7 +82,7 @@ fn enter_pin<H: Display + Buttons>(hal: &mut H, prompt: &str) -> Result<Option<V
                 }
                 pos -= 1;
             }
-            ButtonEvent::Open | ButtonEvent::Back => {}
+            ButtonEvent::Open | ButtonEvent::Back | ButtonEvent::Mode => {}
         }
     }
 }

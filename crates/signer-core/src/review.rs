@@ -30,6 +30,8 @@ pub enum ButtonEvent {
     Open,
     /// Go back up one level (joystick left).
     Back,
+    /// Switch to the next mode (#6).
+    Mode,
 }
 
 /// What the review ended with, if anything.
