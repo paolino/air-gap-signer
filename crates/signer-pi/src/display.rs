@@ -107,7 +107,7 @@ impl FbDisplay {
             bg: Rgb(0, 0, 0),
             accent: Rgb(250, 190, 40),
             pending: Rgb(255, 110, 100),
-            selected: Rgb(40, 60, 110),
+            selected: Rgb(235, 235, 235),
         }
     }
 
@@ -197,7 +197,14 @@ impl signer_hal::Display for FbDisplay {
                     } else {
                         &self.font
                     };
-                    let colour = if row.pending { self.pending } else { self.fg };
+                    // On the light cursor bar, text is black, or dark red
+                    // while it still has to be seen.
+                    let colour = match (row.selected, row.pending) {
+                        (true, true) => Rgb(170, 0, 0),
+                        (true, false) => Rgb(0, 0, 0),
+                        (false, true) => self.pending,
+                        (false, false) => self.fg,
+                    };
                     self.frame.draw_text(font, &row.text, 0, y, colour, bg);
                 }
             }
