@@ -4,7 +4,11 @@
 //!
 //! - `fido-probe enrol` prints a new credential id (hex);
 //! - `fido-probe secret <credential hex> <salt hex>` prints the token's
-//!   hmac-secret for that salt (hex).
+//!   hmac-secret for that salt (hex);
+//! - `fido-probe blob-put <credential hex> <file>` stores the file in the
+//!   token under that credential;
+//! - `fido-probe blob-get` prints the resident credential and the data
+//!   stored under it (hex).
 
 #[cfg(target_os = "linux")]
 fn main() {
@@ -20,6 +24,14 @@ fn main() {
         {
             ["enrol"] => Ok(hex::encode(token.enrol(&pin)?)),
             ["retries"] => Ok(token.pin_retries()?.to_string()),
+            ["blob-put", id, file] => {
+                token.store_backup(&hex::decode(id)?, &std::fs::read(file)?, &pin)?;
+                Ok("stored".into())
+            }
+            ["blob-get"] => {
+                let (id, data) = token.load_backup(&pin)?;
+                Ok(format!("{} {}", hex::encode(id), hex::encode(data)))
+            }
             ["secret", id, salt] => {
                 let salt: [u8; 32] = hex::decode(salt)?
                     .try_into()
@@ -27,7 +39,7 @@ fn main() {
                 Ok(hex::encode(token.secret(&hex::decode(id)?, &salt, &pin)?))
             }
             _ => {
-                Err("usage: fido-probe enrol | retries | secret <credential hex> <salt hex>".into())
+                Err("usage: fido-probe enrol | retries | secret <credential hex> <salt hex> | blob-put <credential hex> <file> | blob-get".into())
             }
         }
     };

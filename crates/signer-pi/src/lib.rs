@@ -7,6 +7,8 @@ pub mod display;
 pub mod fido;
 pub mod flow;
 pub mod frame;
+#[cfg(target_os = "linux")]
+pub mod large_blob;
 pub mod layout;
 #[cfg(target_os = "linux")]
 pub mod se051;

@@ -142,7 +142,25 @@ impl<D: Read + Write> Device<D> {
         }
     }
 
-    /// Create a credential with `hmac-secret` (needs the PIN and a
+    /// Send a CTAP2 command whose success reply has no body.
+    fn cbor_empty(&mut self, command: u8, request: Value) -> Result<(), FidoError> {
+        let mut data = vec![command];
+        ciborium::into_writer(&request, &mut data).map_err(|e| protocol(e.to_string()))?;
+        for f in frames(self.cid, CMD_CBOR, &data) {
+            self.dev.write_all(&f)?;
+        }
+        let (_, data) = receive(&mut self.dev, self.cid)?;
+        match data.first() {
+            Some(0) => Ok(()),
+            Some(0x31) => Err(FidoError::WrongPin),
+            Some(0x32 | 0x34) => Err(FidoError::PinBlocked),
+            Some(status) => Err(FidoError::Status(*status)),
+            None => Err(protocol("empty reply")),
+        }
+    }
+
+    /// Create a resident credential with `hmac-secret` and a large-blob
+    /// key, so the token can also hold the backup (needs the PIN and a
     /// touch); its id.
     pub fn enrol(&mut self, pin: &str) -> Result<Vec<u8>, FidoError> {
         let (_, auth) = self.pin_token(pin, PERMIT_MAKE_CREDENTIAL)?;
@@ -166,7 +184,14 @@ impl<D: Read + Write> Device<D> {
                     (text("type"), text("public-key")),
                 ])]),
             ),
-            (int(6), map(vec![(text("hmac-secret"), Value::Bool(true))])),
+            (
+                int(6),
+                map(vec![
+                    (text("hmac-secret"), Value::Bool(true)),
+                    (text("largeBlobKey"), Value::Bool(true)),
+                ]),
+            ),
+            (int(7), map(vec![(text("rk"), Value::Bool(true))])),
             (int(8), Value::Bytes(auth.authenticate(&CLIENT_DATA_HASH))),
             (int(9), int(2)),
         ]);
@@ -188,52 +213,169 @@ impl<D: Read + Write> Device<D> {
     /// The token's user-verified secret for `salt` under credential
     /// `id` (needs the PIN and a touch).
     pub fn secret(&mut self, id: &[u8], salt: &[u8; 32], pin: &str) -> Result<[u8; 32], FidoError> {
+        self.assert(Some(id), Some(salt), pin)?
+            .secret
+            .ok_or_else(|| protocol("no hmac-secret output"))
+    }
+
+    /// An assertion for credential `id`, or for this RP's resident
+    /// credential when `id` is `None`; with the secret for `salt` if
+    /// given, and the credential's large-blob key (needs the PIN and a
+    /// touch).
+    pub fn assert(
+        &mut self,
+        id: Option<&[u8]>,
+        salt: Option<&[u8; 32]>,
+        pin: &str,
+    ) -> Result<Assertion, FidoError> {
         let (shared, auth) = self.pin_token(pin, PERMIT_GET_ASSERTION)?;
-        let salt_enc = shared.encrypt(salt);
-        let salt_auth = shared.authenticate(&salt_enc);
-        let request = map(vec![
+        let mut ext = Vec::new();
+        if let Some(salt) = salt {
+            let salt_enc = shared.encrypt(salt);
+            let salt_auth = shared.authenticate(&salt_enc);
+            ext.push((
+                text("hmac-secret"),
+                map(vec![
+                    (int(1), shared.platform_key()),
+                    (int(2), Value::Bytes(salt_enc)),
+                    (int(3), Value::Bytes(salt_auth)),
+                    (int(4), int(2)),
+                ]),
+            ));
+        }
+        ext.push((text("largeBlobKey"), Value::Bool(true)));
+        let mut request = vec![
             (int(1), text(RP_ID)),
             (int(2), Value::Bytes(CLIENT_DATA_HASH.to_vec())),
-            (
+        ];
+        if let Some(id) = id {
+            request.push((
                 int(3),
                 Value::Array(vec![map(vec![
                     (text("id"), Value::Bytes(id.to_vec())),
                     (text("type"), text("public-key")),
                 ])]),
-            ),
-            (
-                int(4),
-                map(vec![(
-                    text("hmac-secret"),
-                    map(vec![
-                        (int(1), shared.platform_key()),
-                        (int(2), Value::Bytes(salt_enc)),
-                        (int(3), Value::Bytes(salt_auth)),
-                        (int(4), int(2)),
-                    ]),
-                )]),
-            ),
+            ));
+        }
+        request.extend([
+            (int(4), map(ext)),
             (int(6), Value::Bytes(auth.authenticate(&CLIENT_DATA_HASH))),
             (int(7), int(2)),
         ]);
-        let reply = self.cbor(GET_ASSERTION, Some(request))?;
+        let reply = self.cbor(GET_ASSERTION, Some(map(request)))?;
         let auth = bytes(field(&reply, 2)?)?;
         if auth.len() < 37 || auth[32] & 0x04 == 0 {
             return Err(protocol("the token did not verify the PIN"));
         }
-        if auth[32] & 0x80 == 0 {
-            return Err(protocol("no extension output"));
-        }
-        let ext: Value = ciborium::from_reader(&auth[37..]).map_err(|e| protocol(e.to_string()))?;
-        let out = ext
+        let credential_id = field(&reply, 1)?
             .as_map()
-            .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some("hmac-secret")))
+            .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some("id")))
             .and_then(|(_, v)| v.as_bytes())
-            .ok_or_else(|| protocol("no hmac-secret output"))?;
-        shared
-            .decrypt(out)?
-            .try_into()
-            .map_err(|_| protocol("hmac-secret is not 32 bytes"))
+            .cloned()
+            .ok_or_else(|| protocol("no credential in the reply"))?;
+        let secret = match salt {
+            None => None,
+            Some(_) => {
+                if auth[32] & 0x80 == 0 {
+                    return Err(protocol("no extension output"));
+                }
+                let ext: Value =
+                    ciborium::from_reader(&auth[37..]).map_err(|e| protocol(e.to_string()))?;
+                let out = ext
+                    .as_map()
+                    .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some("hmac-secret")))
+                    .and_then(|(_, v)| v.as_bytes())
+                    .ok_or_else(|| protocol("no hmac-secret output"))?;
+                Some(
+                    shared
+                        .decrypt(out)?
+                        .try_into()
+                        .map_err(|_| protocol("hmac-secret is not 32 bytes"))?,
+                )
+            }
+        };
+        let large_blob_key = match field(&reply, 7) {
+            Ok(v) => Some(
+                bytes(v)?
+                    .try_into()
+                    .map_err(|_| protocol("bad large-blob key"))?,
+            ),
+            Err(_) => None,
+        };
+        Ok(Assertion {
+            credential_id,
+            secret,
+            large_blob_key,
+        })
+    }
+
+    /// The token's whole serialized large-blob array.
+    pub fn read_blobs(&mut self) -> Result<Vec<u8>, FidoError> {
+        let mut out = Vec::new();
+        loop {
+            let request = map(vec![
+                (int(1), int(FRAGMENT as i64)),
+                (int(3), int(out.len() as i64)),
+            ]);
+            let reply = self.cbor(LARGE_BLOBS, Some(request))?;
+            let part = bytes(field(&reply, 1)?)?;
+            out.extend_from_slice(part);
+            if part.len() < FRAGMENT {
+                return Ok(out);
+            }
+        }
+    }
+
+    /// Replace the token's large-blob array with `array` (needs the PIN).
+    pub fn write_blobs(&mut self, array: &[u8], pin: &str) -> Result<(), FidoError> {
+        use sha2::{Digest, Sha256};
+        let (_, auth) = self.pin_token(pin, PERMIT_LARGE_BLOB_WRITE)?;
+        for (i, part) in array.chunks(FRAGMENT).enumerate() {
+            let offset = (i * FRAGMENT) as u32;
+            let message = [
+                &[0xffu8; 32][..],
+                &[LARGE_BLOBS, 0x00],
+                &offset.to_le_bytes(),
+                &Sha256::digest(part),
+            ]
+            .concat();
+            let mut request = vec![
+                (int(2), Value::Bytes(part.to_vec())),
+                (int(3), int(offset.into())),
+            ];
+            if offset == 0 {
+                request.push((int(4), int(array.len() as i64)));
+            }
+            request.extend([
+                (int(5), Value::Bytes(auth.authenticate(&message))),
+                (int(6), int(2)),
+            ]);
+            self.cbor_empty(LARGE_BLOBS, map(request))?;
+        }
+        Ok(())
+    }
+
+    /// Store `backup` in the token, under its resident credential `id`
+    /// (needs the PIN, a touch for the key, then the PIN again).
+    pub fn store_backup(&mut self, id: &[u8], backup: &[u8], pin: &str) -> Result<(), FidoError> {
+        let key = self
+            .assert(Some(id), None, pin)?
+            .large_blob_key
+            .ok_or_else(|| protocol("the credential has no large-blob key"))?;
+        let array = self.read_blobs()?;
+        self.write_blobs(&crate::large_blob::write(&array, &key, backup), pin)
+    }
+
+    /// The backup stored in the token, with the credential holding it
+    /// (needs the PIN and a touch).
+    pub fn load_backup(&mut self, pin: &str) -> Result<(Vec<u8>, Vec<u8>), FidoError> {
+        let a = self.assert(None, None, pin)?;
+        let key = a
+            .large_blob_key
+            .ok_or_else(|| protocol("the credential has no large-blob key"))?;
+        let array = self.read_blobs()?;
+        let backup = crate::large_blob::read(&array, &key).map_err(|e| protocol(e.to_string()))?;
+        Ok((a.credential_id, backup))
     }
 
     /// Tries left before the token blocks its PIN.
@@ -280,6 +422,17 @@ impl<D: Read + Write> Device<D> {
 
 const PERMIT_MAKE_CREDENTIAL: u8 = 0x01;
 const PERMIT_GET_ASSERTION: u8 = 0x02;
+const PERMIT_LARGE_BLOB_WRITE: u8 = 0x10;
+const LARGE_BLOBS: u8 = 0x0c;
+/// Large-blob fragment size, well under the token's message size.
+const FRAGMENT: usize = 1024;
+
+/// What a get-assertion returned.
+pub struct Assertion {
+    pub credential_id: Vec<u8>,
+    pub secret: Option<[u8; 32]>,
+    pub large_blob_key: Option<[u8; 32]>,
+}
 /// No client data: the assertion's signature is not used, only its
 /// hmac-secret output.
 const CLIENT_DATA_HASH: [u8; 32] = [0; 32];
