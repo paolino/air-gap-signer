@@ -6,4 +6,6 @@ pub mod display;
 pub mod flow;
 pub mod frame;
 pub mod layout;
+#[cfg(target_os = "linux")]
+pub mod se051;
 pub mod usb;

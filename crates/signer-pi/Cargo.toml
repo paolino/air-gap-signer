@@ -10,6 +10,10 @@ name = "signer-pi-demo"
 path = "src/bin/demo.rs"
 
 [[bin]]
+name = "se051-probe"
+path = "src/bin/se051-probe.rs"
+
+[[bin]]
 name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
@@ -26,3 +30,7 @@ tempfile = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gpiocdev = "0.8"
+se05x = { version = "0.4.2", default-features = false, features = ["embedded-hal-v1.0"] }
+linux-embedded-hal = { version = "0.5", default-features = false, features = ["i2c"] }
+embedded-hal = "1"
+i2cdev = "0.6"
