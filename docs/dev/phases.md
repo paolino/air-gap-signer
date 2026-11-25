@@ -43,6 +43,7 @@
 - [ ] `signer-pi` — framebuffer, GPIO buttons, USB mount, I2C secure element
 - [ ] Cross-compile aarch64-unknown-linux-musl
 - [ ] Test on physical Pi 4 or Pi Zero 2W with display + buttons + SE050
+- [x] Bench bring-up on the [prototype rig](prototype-rig.md): a device acknowledges at the SE051 address, test frame drawn on the display, edges seen on all seven controls (from the Linux command line, not yet from `signer-pi`)
 
 ## Phase 5: Buildroot Image
 
