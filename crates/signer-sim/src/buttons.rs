@@ -21,6 +21,12 @@ pub fn poll_event(window: &mut Window) -> Result<Option<ButtonEvent>, HalError> 
     if window.is_key_pressed(Key::Escape, minifb::KeyRepeat::No) {
         return Ok(Some(ButtonEvent::Reject));
     }
+    if window.is_key_pressed(Key::Right, minifb::KeyRepeat::No) {
+        return Ok(Some(ButtonEvent::Open));
+    }
+    if window.is_key_pressed(Key::Left, minifb::KeyRepeat::No) {
+        return Ok(Some(ButtonEvent::Back));
+    }
     if window.is_key_pressed(Key::Up, minifb::KeyRepeat::Yes) {
         return Ok(Some(ButtonEvent::Up));
     }

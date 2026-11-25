@@ -1,5 +1,6 @@
 use signer_core::crypto::extract_signable;
 use signer_core::display::{json_to_lines, DisplayLine};
+use signer_core::review::{Outcome, Review};
 use signer_core::spec::{OutputSpec, SigningSpec};
 use signer_core::wasm_sandbox::Sandbox;
 use signer_hal::{ButtonEvent, Buttons, Display, HalError, SecureElement, UsbMount};
@@ -81,6 +82,7 @@ fn enter_pin<H: Display + Buttons>(hal: &mut H, prompt: &str) -> Result<Option<V
                 }
                 pos -= 1;
             }
+            ButtonEvent::Open | ButtonEvent::Back => {}
         }
     }
 }
@@ -209,23 +211,15 @@ pub fn run_once<H: Display + Buttons>(
     let json_val: serde_json::Value = serde_json::from_str(&json_str)?;
     let lines = json_to_lines(&json_val);
 
-    // Scrollable review
-    let mut scroll: usize = 0;
-    let max_scroll = lines.len().saturating_sub(1);
-    hal.show_lines(&lines, scroll)?;
-
+    // Review: lines cut with an ellipsis must be opened before Confirm counts.
+    let (cols, rows) = hal.text_grid();
+    let mut review = Review::new(lines, cols, rows)?;
     let confirmed = loop {
-        match hal.wait_event()? {
-            ButtonEvent::Up => {
-                scroll = scroll.saturating_sub(1);
-                hal.show_lines(&lines, scroll)?;
-            }
-            ButtonEvent::Down => {
-                scroll = max_scroll.min(scroll + 1);
-                hal.show_lines(&lines, scroll)?;
-            }
-            ButtonEvent::Confirm => break true,
-            ButtonEvent::Reject => break false,
+        hal.show_review(&review.view())?;
+        match review.handle(hal.wait_event()?) {
+            Outcome::Continue => {}
+            Outcome::Confirmed => break true,
+            Outcome::Rejected => break false,
         }
     };
 

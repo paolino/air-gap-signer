@@ -7,6 +7,7 @@ mod usb;
 use clap::Parser;
 use display::SimDisplay;
 use signer_core::display::DisplayLine;
+use signer_core::review::View;
 use signer_hal::{ButtonEvent, HalError};
 use std::path::PathBuf;
 use usb::SimUsb;
@@ -40,6 +41,14 @@ impl signer_hal::Display for SimHal {
 
     fn show_lines(&mut self, lines: &[DisplayLine], scroll_offset: usize) -> Result<(), HalError> {
         signer_hal::Display::show_lines(&mut self.display, lines, scroll_offset)
+    }
+
+    fn text_grid(&self) -> (usize, usize) {
+        signer_hal::Display::text_grid(&self.display)
+    }
+
+    fn show_review(&mut self, view: &View) -> Result<(), HalError> {
+        signer_hal::Display::show_review(&mut self.display, view)
     }
 }
 

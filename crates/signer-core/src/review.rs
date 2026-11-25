@@ -1,0 +1,932 @@
+//! The transaction review a user goes through before approving.
+//!
+//! The transaction is browsed as a tree. The header is the branch from
+//! the root to the level shown (`tx›outputs`); below it are that level's
+//! entries, and under each group its own entries, indented one level.
+//! Moving right on a group goes into it; on a value, or a group whose
+//! name is cut, it shows the entry in full. Moving left goes back up.
+//!
+//! A value too long for its row is cut in the middle with `…`. Confirm is
+//! accepted only once every entry has been on screen and every cut entry
+//! has been shown whole or read to its end: nothing the user approves can
+//! stay hidden in an unvisited branch or behind an ellipsis.
+
+use crate::display::DisplayLine;
+
+/// A user input during review.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ButtonEvent {
+    Confirm,
+    Reject,
+    Up,
+    Down,
+    /// Enter the selected group, or show the selected value in full
+    /// (joystick right).
+    Open,
+    /// Go back up one level (joystick left).
+    Back,
+}
+
+/// What the review ended with, if anything.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Outcome {
+    Continue,
+    Confirmed,
+    Rejected,
+}
+
+/// One entry of the level shown.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    pub text: String,
+    pub selected: bool,
+    /// A group the user can go into with right; drawn in bold.
+    pub expandable: bool,
+    /// Something here, or under it, still has to be shown before Confirm
+    /// counts; drawn in its own colour.
+    pub pending: bool,
+}
+
+/// What the display must draw now: a header row, then the body.
+#[derive(Debug, Clone, PartialEq)]
+pub enum View {
+    /// The entries of one level of the tree.
+    Overview { header: String, rows: Vec<Row> },
+    /// One value in full, a page at a time.
+    Detail { header: String, rows: Vec<String> },
+}
+
+/// Why a review cannot start.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewError {
+    /// The display's text grid cannot hold a review.
+    GridTooSmall { cols: usize, rows: usize },
+    /// There is nothing to review: approving it would approve unseen bytes.
+    Empty,
+}
+
+impl std::fmt::Display for ReviewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::GridTooSmall { cols, rows } => write!(
+                f,
+                "a {cols}x{rows} text grid is too small to review on (need {MIN_COLS}x{MIN_ROWS})"
+            ),
+            Self::Empty => write!(f, "the transaction has no fields to review"),
+        }
+    }
+}
+
+impl std::error::Error for ReviewError {}
+
+/// Smallest grid a review is shown on: enough for a key and a value tail,
+/// and a header plus three rows.
+pub const MIN_COLS: usize = 16;
+pub const MIN_ROWS: usize = 4;
+
+/// Separates the segments of the branch in the header.
+pub const GROUP_MARK: char = '›';
+
+/// The branch label of the root.
+const ROOT: &str = "tx";
+
+/// Columns a nested entry is indented by.
+const INDENT: usize = 2;
+
+/// Shortest value tail worth showing after a key; below this the whole
+/// `key: value` is cut instead.
+const MIN_VALUE: usize = 8;
+
+struct Node {
+    key: Option<String>,
+    value: String,
+    parent: usize,
+    children: Vec<usize>,
+}
+
+pub struct Review {
+    /// Node 0 is the root.
+    nodes: Vec<Node>,
+    cols: usize,
+    rows: usize,
+    /// The group whose tree is shown.
+    at: usize,
+    /// Index of the selected row in `tree()`.
+    cursor: usize,
+    /// The screens left behind by going right, as `(at, cursor)`.
+    back: Vec<(usize, usize)>,
+    /// `Some(page)` while the selected entry is shown in full.
+    detail: Option<usize>,
+    /// Entries never on screen.
+    unseen: Vec<bool>,
+    /// Entries that would be cut with `…` (values, or group names) and
+    /// have neither been shown whole nor read to their end.
+    unopened: Vec<bool>,
+}
+
+impl Review {
+    /// `cols` × `rows` is the text grid of the display; the first row is
+    /// the header.
+    pub fn new(lines: Vec<DisplayLine>, cols: usize, rows: usize) -> Result<Self, ReviewError> {
+        if cols < MIN_COLS || rows < MIN_ROWS {
+            return Err(ReviewError::GridTooSmall { cols, rows });
+        }
+        let nodes = build_tree(lines);
+        if nodes[0].children.is_empty() {
+            return Err(ReviewError::Empty);
+        }
+        // Until shown whole, anything longer than the narrowest (nested)
+        // row it can appear in counts as cut.
+        let unopened = nodes
+            .iter()
+            .map(|n| full_text(n).chars().count() > cols - INDENT)
+            .collect();
+        let mut unseen = vec![true; nodes.len()];
+        unseen[0] = false;
+        let mut review = Self {
+            nodes,
+            cols,
+            rows,
+            at: 0,
+            cursor: 0,
+            back: Vec::new(),
+            detail: None,
+            unseen,
+            unopened,
+        };
+        review.cursor = review.first_stop();
+        review.mark_shown();
+        Ok(review)
+    }
+
+    /// Entries never shown, plus entries still cut with `…`: all must be
+    /// shown before Confirm counts.
+    pub fn remaining(&self) -> usize {
+        let count = |v: &[bool]| v.iter().filter(|&&b| b).count();
+        count(&self.unseen) + count(&self.unopened)
+    }
+
+    pub fn handle(&mut self, event: ButtonEvent) -> Outcome {
+        let entries = self.tree().len();
+        match (self.detail, event) {
+            (_, ButtonEvent::Reject) => return Outcome::Rejected,
+            (Some(page), ButtonEvent::Up) => self.show_page(page.saturating_sub(1)),
+            (Some(page), ButtonEvent::Down) => {
+                self.show_page((page + 1).min(self.pages().len() - 1))
+            }
+            (Some(_), ButtonEvent::Back) => self.detail = None,
+            (Some(_), ButtonEvent::Open) if self.expandable(self.cursor) => {
+                self.detail = None;
+                self.enter(self.selected());
+            }
+            (Some(_), _) => {}
+            (None, ButtonEvent::Up) => self.cursor = self.step(entries - 1),
+            (None, ButtonEvent::Down) => self.cursor = self.step(1),
+            (None, ButtonEvent::Open) => {
+                let node = self.selected();
+                // A value, or any entry whose name is cut, opens in full
+                // first; a nested group goes in; a heading, whose entries
+                // are already listed under it, does nothing.
+                if !self.is_group(node) || self.unopened[node] {
+                    self.show_page(0);
+                } else if self.expandable(self.cursor) {
+                    self.enter(node);
+                }
+            }
+            (None, ButtonEvent::Back) => {
+                if let Some((at, cursor)) = self.back.pop() {
+                    self.at = at;
+                    self.cursor = cursor;
+                }
+            }
+            (None, ButtonEvent::Confirm) if self.remaining() == 0 => return Outcome::Confirmed,
+            (None, _) => {}
+        }
+        if self.detail.is_none() {
+            self.mark_shown();
+        }
+        Outcome::Continue
+    }
+
+    pub fn view(&self) -> View {
+        match self.detail {
+            None => {
+                let status = match self.remaining() {
+                    0 => "OK?".to_string(),
+                    n => format!("{n} left"),
+                };
+                let rows = self
+                    .window()
+                    .map(|(i, (node, depth))| Row {
+                        text: self.entry_text(node, depth).0,
+                        selected: i == self.cursor,
+                        expandable: self.expandable(i),
+                        pending: self.pending(node),
+                    })
+                    .collect();
+                View::Overview {
+                    header: self.header(&self.branch(self.at), &status),
+                    rows,
+                }
+            }
+            Some(page) => {
+                let pages = self.pages();
+                let status = format!("{}/{}", page + 1, pages.len());
+                View::Detail {
+                    header: self.header(&self.branch(self.selected()), &status),
+                    rows: pages[page].clone(),
+                }
+            }
+        }
+    }
+
+    fn is_group(&self, node: usize) -> bool {
+        !self.nodes[node].children.is_empty()
+    }
+
+    /// Whether the row at `index` of `tree()` is a nested group, which
+    /// right goes into.
+    fn expandable(&self, index: usize) -> bool {
+        let (node, depth) = self.tree()[index];
+        depth == 1 && self.is_group(node)
+    }
+
+    /// Whether `node`, or anything under it, still has to be shown.
+    fn pending(&self, node: usize) -> bool {
+        self.unopened[node]
+            || self.nodes[node]
+                .children
+                .iter()
+                .any(|&c| self.unseen[c] || self.pending(c))
+    }
+
+    fn enter(&mut self, group: usize) {
+        self.back.push((self.at, self.cursor));
+        self.at = group;
+        self.cursor = self.first_stop();
+    }
+
+    /// Whether the cursor stops on the row at `index` of `tree()`: every
+    /// row but a heading, unless the heading's name is cut and unread.
+    fn stops(&self, index: usize) -> bool {
+        let (node, depth) = self.tree()[index];
+        !(depth == 0 && self.is_group(node)) || self.unopened[node]
+    }
+
+    fn first_stop(&self) -> usize {
+        (0..self.tree().len()).find(|&i| self.stops(i)).unwrap_or(0)
+    }
+
+    /// The next row the cursor stops on, moving by `delta` (1 down,
+    /// `len - 1` up), wrapping around.
+    fn step(&self, delta: usize) -> usize {
+        let len = self.tree().len();
+        let mut i = self.cursor;
+        for _ in 0..len {
+            i = (i + delta) % len;
+            if self.stops(i) {
+                return i;
+            }
+        }
+        self.cursor
+    }
+
+    /// The rows of the level shown: each entry of `at`, and under each
+    /// group its own entries, one level deep, as `(node, depth)`.
+    fn tree(&self) -> Vec<(usize, usize)> {
+        let mut rows = Vec::new();
+        for &c in &self.nodes[self.at].children {
+            rows.push((c, 0));
+            for &g in &self.nodes[c].children {
+                rows.push((g, 1));
+            }
+        }
+        rows
+    }
+
+    /// The rows on screen, with their index in `tree()`.
+    fn window(&self) -> impl Iterator<Item = (usize, (usize, usize))> {
+        self.tree()
+            .into_iter()
+            .enumerate()
+            .skip(self.top())
+            .take(self.visible())
+    }
+
+    fn selected(&self) -> usize {
+        self.tree()[self.cursor].0
+    }
+
+    fn visible(&self) -> usize {
+        self.rows - 1
+    }
+
+    /// First row of the window, which keeps the cursor on screen.
+    fn top(&self) -> usize {
+        (self.cursor + 1).saturating_sub(self.visible())
+    }
+
+    /// Every entry on screen is seen; one shown whole needs no opening.
+    fn mark_shown(&mut self) {
+        let shown: Vec<(usize, bool)> = self
+            .window()
+            .map(|(_, (node, depth))| (node, self.entry_text(node, depth).1))
+            .collect();
+        for (node, cut) in shown {
+            self.unseen[node] = false;
+            if !cut {
+                self.unopened[node] = false;
+            }
+        }
+    }
+
+    /// Show `page` of the selected entry; reaching its last page counts
+    /// as having read it.
+    fn show_page(&mut self, page: usize) {
+        self.detail = Some(page);
+        if page + 1 == self.pages().len() {
+            let selected = self.selected();
+            self.unopened[selected] = false;
+        }
+    }
+
+    /// The selected entry in full, split into screen pages: a value as
+    /// its key wrapped on its own rows, then the value wrapped and
+    /// indented under it; a group as its full label.
+    fn pages(&self) -> Vec<Vec<String>> {
+        let node = &self.nodes[self.selected()];
+        let mut rows = Vec::new();
+        if !node.children.is_empty() {
+            rows = wrap(&full_text(node), self.cols);
+        } else {
+            if let Some(k) = &node.key {
+                rows.extend(wrap(&format!("{k}:"), self.cols));
+            }
+            rows.extend(
+                wrap(&node.value, self.cols - 1)
+                    .into_iter()
+                    .map(|r| format!(" {r}")),
+            );
+        }
+        rows.chunks(self.visible())
+            .map(<[String]>::to_vec)
+            .collect()
+    }
+
+    /// An entry as one row, indented by its depth, and whether it had to
+    /// be cut. A group shows just its key. A value is `key: value`, cut in
+    /// the value's middle so the key stays readable.
+    fn entry_text(&self, node: usize, depth: usize) -> (String, bool) {
+        let n = &self.nodes[node];
+        let pad = " ".repeat(INDENT * depth);
+        let width = self.cols - pad.len();
+        let full = full_text(n);
+        if full.chars().count() <= width {
+            return (format!("{pad}{full}"), false);
+        }
+        let cut = match &n.key {
+            Some(k)
+                if !self.is_group(node)
+                    && !n.value.is_empty()
+                    && k.chars().count() + 2 + MIN_VALUE <= width =>
+            {
+                let room = width - k.chars().count() - 2;
+                format!("{k}: {}", ellipsize(&n.value, room))
+            }
+            _ => ellipsize(&full, width),
+        };
+        (format!("{pad}{cut}"), true)
+    }
+
+    /// The keys from the root to `node`, e.g. `tx›outputs›[0]`.
+    fn branch(&self, node: usize) -> String {
+        let mut keys = Vec::new();
+        let mut n = node;
+        while n != 0 {
+            keys.push(self.nodes[n].key.as_deref().unwrap_or("?"));
+            n = self.nodes[n].parent;
+        }
+        keys.push(ROOT);
+        keys.reverse();
+        keys.join(&GROUP_MARK.to_string())
+    }
+
+    /// The branch on the left, cut from its start when too long so the
+    /// deepest segments stay visible, and `status` on the right.
+    fn header(&self, branch: &str, status: &str) -> String {
+        let room = self.cols.saturating_sub(status.chars().count() + 1);
+        let chars: Vec<char> = branch.chars().collect();
+        let left: String = if chars.len() <= room {
+            branch.to_string()
+        } else {
+            let tail = &chars[chars.len() - (room - 1)..];
+            std::iter::once('…').chain(tail.iter().copied()).collect()
+        };
+        let gap = self.cols - left.chars().count() - status.chars().count();
+        format!("{left}{}{status}", " ".repeat(gap))
+    }
+}
+
+/// Rebuild the tree that `json_to_lines` flattened, from the indents.
+fn build_tree(lines: Vec<DisplayLine>) -> Vec<Node> {
+    let mut nodes = vec![Node {
+        key: None,
+        value: String::new(),
+        parent: 0,
+        children: Vec::new(),
+    }];
+    // (indent, node) of the open ancestors; the root sits below any indent.
+    let mut stack: Vec<(Option<usize>, usize)> = vec![(None, 0)];
+    for line in lines {
+        while stack.len() > 1 && stack.last().is_some_and(|(i, _)| *i >= Some(line.indent)) {
+            stack.pop();
+        }
+        let parent = stack.last().map_or(0, |&(_, n)| n);
+        let id = nodes.len();
+        // `json_to_lines` keys list items `[i]` and gives the list a
+        // `[n items]` value; show the items as `_i`.
+        let in_list = parent != 0 && !nodes[parent].value.is_empty();
+        let key = match line.key {
+            Some(k) if in_list && k.starts_with('[') && k.ends_with(']') => {
+                Some(format!("_{}", &k[1..k.len() - 1]))
+            }
+            k => k,
+        };
+        nodes.push(Node {
+            key: key.as_deref().map(printable),
+            value: printable(&line.value),
+            parent,
+            children: Vec::new(),
+        });
+        nodes[parent].children.push(id);
+        stack.push((Some(line.indent), id));
+    }
+    nodes
+}
+
+/// An entry's whole text: the key for a group; `key: value`, `key:` or
+/// the bare value for a value.
+fn full_text(node: &Node) -> String {
+    if !node.children.is_empty() {
+        return node.key.clone().unwrap_or_default();
+    }
+    match &node.key {
+        Some(k) if node.value.is_empty() => format!("{k}:"),
+        Some(k) => format!("{k}: {}", node.value),
+        None => node.value.clone(),
+    }
+}
+
+/// Spell out every character outside printable ASCII as `\u{hex}`, and a
+/// backslash as `\\`, so that text the font cannot draw, control
+/// characters, look-alikes and literal escapes can never show as each
+/// other.
+fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\\' => "\\\\".to_string(),
+            ' '..='~' => c.to_string(),
+            _ => format!("\\u{{{:x}}}", c as u32),
+        })
+        .collect()
+}
+
+/// Shorten `text` to `width` characters by replacing its middle with `…`.
+pub fn ellipsize(text: &str, width: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= width {
+        return text.to_string();
+    }
+    let keep = width.saturating_sub(1);
+    let head = keep.div_ceil(2);
+    let tail = keep - head;
+    let mut out: String = chars[..head].iter().collect();
+    out.push('…');
+    out.extend(&chars[chars.len() - tail..]);
+    out
+}
+
+/// Split `text` into rows of at most `width` characters, losing nothing.
+pub fn wrap(text: &str, width: usize) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return vec![String::new()];
+    }
+    chars
+        .chunks(width.max(1))
+        .map(|c| c.iter().collect())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::display::json_to_lines;
+
+    const ADDR: &str = "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp";
+
+    fn tx() -> Vec<DisplayLine> {
+        json_to_lines(&serde_json::json!({
+            "fee": "171485",
+            "outputs": [
+                {"address": ADDR, "lovelace": "5000000"},
+                {"address": "addr1vrgp", "lovelace": "94828515"}
+            ]
+        }))
+    }
+
+    fn review(lines: Vec<DisplayLine>) -> Review {
+        Review::new(lines, 22, 11).expect("grid is large enough")
+    }
+
+    fn level(r: &Review) -> (String, Vec<String>, usize) {
+        match r.view() {
+            View::Overview { header, rows } => {
+                let selected = rows.iter().position(|r| r.selected).unwrap();
+                (header, rows.into_iter().map(|r| r.text).collect(), selected)
+            }
+            v => panic!("expected a level, got {v:?}"),
+        }
+    }
+
+    fn detail(r: &Review) -> (String, Vec<String>) {
+        match r.view() {
+            View::Detail { header, rows } => (header, rows),
+            v => panic!("expected detail, got {v:?}"),
+        }
+    }
+
+    /// Move the cursor to the row whose text starts with `prefix`.
+    fn select(r: &mut Review, prefix: &str) {
+        for _ in 0..50 {
+            let (_, rows, sel) = level(r);
+            if rows[sel].starts_with(prefix) {
+                return;
+            }
+            r.handle(ButtonEvent::Down);
+        }
+        panic!("no row starting with {prefix:?}");
+    }
+
+    #[test]
+    fn ellipsis_keeps_both_ends() {
+        assert_eq!(ellipsize("abcdefghij", 7), "abc…hij");
+        assert_eq!(ellipsize("short", 7), "short");
+    }
+
+    #[test]
+    fn wrap_loses_nothing() {
+        let rows = wrap(ADDR, 21);
+        assert!(rows.iter().all(|r| r.chars().count() <= 21));
+        assert_eq!(rows.concat(), ADDR);
+    }
+
+    #[test]
+    fn each_group_lists_its_entries_under_it() {
+        let r = review(tx());
+        let (header, rows, sel) = level(&r);
+        assert!(header.starts_with("tx "), "{header}");
+        assert_eq!(rows, vec!["fee: 171485", "outputs", "  _0", "  _1"]);
+        assert_eq!(sel, 0);
+    }
+
+    #[test]
+    fn only_entries_you_can_go_into_are_marked() {
+        let r = review(tx());
+        match r.view() {
+            View::Overview { rows, .. } => {
+                let marks: Vec<_> = rows.iter().map(|r| r.expandable).collect();
+                assert_eq!(marks, vec![false, false, true, true]);
+            }
+            v => panic!("expected a level, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn rows_still_needing_attention_are_marked_pending_until_done() {
+        let pending = |r: &Review| match r.view() {
+            View::Overview { rows, .. } => rows
+                .into_iter()
+                .map(|r| (r.text, r.pending))
+                .collect::<Vec<_>>(),
+            v => panic!("expected a level, got {v:?}"),
+        };
+        let mut r = review(tx());
+        assert_eq!(
+            pending(&r),
+            vec![
+                ("fee: 171485".to_string(), false),
+                ("outputs".to_string(), true),
+                ("  _0".to_string(), true),
+                ("  _1".to_string(), true),
+            ]
+        );
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open);
+        r.handle(ButtonEvent::Back);
+        let after = pending(&r);
+        assert_eq!(
+            after[3],
+            ("  _1".to_string(), false),
+            "[1] done once its fields were shown"
+        );
+        assert_eq!(
+            after[2],
+            ("  _0".to_string(), true),
+            "[0] still hides a cut address"
+        );
+        assert!(
+            after[1].1,
+            "the heading stays pending while anything under it is"
+        );
+    }
+
+    #[test]
+    fn the_cursor_never_stops_on_a_heading() {
+        let mut r = review(tx());
+        let mut visited = Vec::new();
+        for _ in 0..4 {
+            let (_, rows, sel) = level(&r);
+            visited.push(rows[sel].clone());
+            r.handle(ButtonEvent::Down);
+        }
+        assert_eq!(visited, vec!["fee: 171485", "  _0", "  _1", "fee: 171485"]);
+        let mut r = review(tx());
+        r.handle(ButtonEvent::Up);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(
+            rows[sel], "  _1",
+            "up from the first field wraps past the heading"
+        );
+    }
+
+    #[test]
+    fn right_on_a_nested_group_goes_into_it() {
+        let mut r = review(tx());
+        select(&mut r, "  _0");
+        r.handle(ButtonEvent::Open);
+        let (header, rows, sel) = level(&r);
+        assert!(header.starts_with("tx›outputs›_0 "), "{header}");
+        assert!(rows[0].starts_with("address: addr_"), "{}", rows[0]);
+        assert!(rows[0].contains('…'));
+        assert_eq!(rows[1], "lovelace: 5000000");
+        assert_eq!(sel, 0);
+    }
+
+    #[test]
+    fn left_goes_back_to_the_screen_it_came_from() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open);
+        assert!(level(&r).0.starts_with("tx›outputs›_1 "));
+        r.handle(ButtonEvent::Back);
+        let (header, rows, sel) = level(&r);
+        assert!(header.starts_with("tx "), "{header}");
+        assert_eq!(rows[sel], "  _1");
+    }
+
+    #[test]
+    fn a_value_opens_with_its_key_above_and_the_value_indented() {
+        let mut r = review(tx());
+        select(&mut r, "  _0");
+        r.handle(ButtonEvent::Open);
+        select(&mut r, "address: addr_");
+        r.handle(ButtonEvent::Open);
+        let (header, rows) = detail(&r);
+        assert!(header.contains("address"), "{header}");
+        assert_eq!(rows[0], "address:");
+        let value: String = rows[1..].iter().map(|r| r.trim_start()).collect();
+        assert_eq!(value, ADDR);
+    }
+
+    #[test]
+    fn confirm_waits_until_everything_was_shown_and_every_cut_value_read() {
+        let mut r = review(tx());
+        assert_eq!(
+            r.remaining(),
+            5,
+            "four fields inside the outputs, one long address"
+        );
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        assert!(level(&r).0.ends_with(" left"));
+        select(&mut r, "  _0");
+        r.handle(ButtonEvent::Open);
+        select(&mut r, "address: addr_");
+        r.handle(ButtonEvent::Open);
+        r.handle(ButtonEvent::Back);
+        r.handle(ButtonEvent::Back);
+        assert_eq!(r.remaining(), 2, "the fields of [1]");
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open);
+        assert_eq!(r.remaining(), 0);
+        assert!(level(&r).0.ends_with("OK?"));
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
+    }
+
+    #[test]
+    fn entries_never_scrolled_into_view_block_confirm() {
+        let lines: Vec<_> = (0..30)
+            .map(|i| DisplayLine {
+                indent: 1,
+                key: Some("k".into()),
+                value: i.to_string(),
+            })
+            .collect();
+        let mut r = review(lines);
+        assert_eq!(r.remaining(), 20);
+        for _ in 0..29 {
+            r.handle(ButtonEvent::Down);
+        }
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
+    }
+
+    #[test]
+    fn a_multipage_value_must_be_read_to_its_last_page() {
+        let value = "x".repeat(500);
+        let line = DisplayLine {
+            indent: 1,
+            key: Some("data".into()),
+            value: value.clone(),
+        };
+        let mut r = review(vec![line]);
+        r.handle(ButtonEvent::Open);
+        r.handle(ButtonEvent::Back);
+        assert_eq!(r.remaining(), 1, "opening without paging does not count");
+        r.handle(ButtonEvent::Open);
+        let mut read = String::new();
+        let mut last = String::new();
+        for _ in 0..10 {
+            let (header, rows) = detail(&r);
+            if header != last {
+                read.extend(
+                    rows.iter()
+                        .skip_while(|r| !r.starts_with(' '))
+                        .map(|r| r.trim_start()),
+                );
+                last = header;
+            }
+            r.handle(ButtonEvent::Down);
+        }
+        assert_eq!(read, value);
+        r.handle(ButtonEvent::Back);
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
+    }
+
+    #[test]
+    fn the_cursor_moves_through_nested_rows_and_wraps_around() {
+        let mut r = review(tx());
+        r.handle(ButtonEvent::Up);
+        assert_eq!(level(&r).2, 3, "onto the last nested row");
+        r.handle(ButtonEvent::Down);
+        assert_eq!(level(&r).2, 0);
+        r.handle(ButtonEvent::Down);
+        assert_eq!(level(&r).2, 2, "past the heading");
+    }
+
+    #[test]
+    fn back_at_the_root_and_confirm_in_a_value_do_nothing() {
+        let mut r = review(tx());
+        assert_eq!(r.handle(ButtonEvent::Back), Outcome::Continue);
+        assert!(level(&r).0.starts_with("tx "));
+        r.handle(ButtonEvent::Open);
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        assert!(matches!(r.view(), View::Detail { .. }));
+    }
+
+    #[test]
+    fn reject_ends_the_review_from_anywhere() {
+        let mut r = review(tx());
+        select(&mut r, "  _0");
+        r.handle(ButtonEvent::Open);
+        assert_eq!(r.handle(ButtonEvent::Reject), Outcome::Rejected);
+    }
+
+    #[test]
+    fn a_deep_branch_keeps_its_deepest_segments() {
+        let lines = json_to_lines(&serde_json::json!(
+            {"alpha": {"beta": {"gamma": {"delta": {"epsilon": {"v": "1"}}}}}}
+        ));
+        let mut r = review(lines);
+        select(&mut r, "  beta");
+        r.handle(ButtonEvent::Open);
+        select(&mut r, "  delta");
+        r.handle(ButtonEvent::Open);
+        let (header, rows, _) = level(&r);
+        assert_eq!(header.chars().count(), 22);
+        assert!(header.starts_with('…'), "{header}");
+        assert!(header.contains("gamma›delta"), "{header}");
+        assert_eq!(rows, vec!["epsilon", "  v: 1"]);
+    }
+
+    #[test]
+    fn a_grid_too_small_to_review_on_is_refused() {
+        assert_eq!(
+            Review::new(tx(), 15, 11).err(),
+            Some(ReviewError::GridTooSmall { cols: 15, rows: 11 })
+        );
+        assert!(Review::new(tx(), 22, 3).is_err());
+        assert!(Review::new(tx(), 16, 4).is_ok());
+    }
+
+    #[test]
+    fn an_empty_transaction_cannot_be_reviewed() {
+        assert_eq!(Review::new(vec![], 22, 11).err(), Some(ReviewError::Empty));
+        let empty = json_to_lines(&serde_json::json!({}));
+        assert_eq!(Review::new(empty, 22, 11).err(), Some(ReviewError::Empty));
+    }
+
+    #[test]
+    fn nested_groups_show_just_their_key() {
+        let lines = json_to_lines(&serde_json::json!({"g": {"a": [1, 2], "b": {"x": 1}}}));
+        let r = review(lines);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows, vec!["g", "  a", "  b"]);
+        assert_eq!(
+            sel, 1,
+            "the cursor starts on the first entry, not the heading"
+        );
+    }
+
+    #[test]
+    fn characters_outside_printable_ascii_are_spelled_out() {
+        let lines = json_to_lines(&serde_json::json!({"name": "東西", "tab": "a\tb"}));
+        let r = review(lines);
+        assert_eq!(
+            level(&r).1,
+            vec![r"name: \u{6771}\u{897f}", r"tab: a\u{9}b"]
+        );
+    }
+
+    #[test]
+    fn a_long_key_is_shown_in_full_in_the_value_page() {
+        let key = "k".repeat(40);
+        let mut r = review(vec![DisplayLine {
+            indent: 1,
+            key: Some(key.clone()),
+            value: "v".into(),
+        }]);
+        r.handle(ButtonEvent::Open);
+        let (_, rows) = detail(&r);
+        let shown: String = rows
+            .iter()
+            .take_while(|r| !r.starts_with(' '))
+            .cloned()
+            .collect();
+        assert_eq!(shown, format!("{key}:"));
+    }
+
+    #[test]
+    fn a_group_with_a_cut_name_shows_its_full_name_before_its_entries() {
+        let policy = "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a";
+        let lines = json_to_lines(&serde_json::json!({"assets": {policy: {"tok": "1"}}}));
+        let mut r = review(lines);
+        let (_, rows, _) = level(&r);
+        assert_eq!(rows[0], "assets");
+        assert!(
+            rows[1].starts_with("  ") && rows[1].contains('…'),
+            "{}",
+            rows[1]
+        );
+        assert_eq!(r.remaining(), 2, "the cut name, and tok inside");
+        r.handle(ButtonEvent::Open); // first: the full name
+        let (_, page) = detail(&r);
+        assert_eq!(page.concat(), policy);
+        assert_eq!(r.remaining(), 1);
+        r.handle(ButtonEvent::Open); // then: its entries
+        let (header, rows, _) = level(&r);
+        assert!(header.contains('…'), "{header}");
+        assert_eq!(rows, vec!["tok: 1"]);
+        assert_eq!(r.remaining(), 0);
+    }
+
+    #[test]
+    fn list_items_are_numbered_with_an_underscore() {
+        let lines = json_to_lines(&serde_json::json!({"xs": ["a", "b"]}));
+        let r = review(lines);
+        assert_eq!(level(&r).1, vec!["xs", "  _0: a", "  _1: b"]);
+    }
+
+    #[test]
+    fn a_heading_whose_name_is_cut_still_takes_the_cursor() {
+        let long = "h".repeat(30);
+        let lines = json_to_lines(&serde_json::json!({ long.clone(): {"a": "1"} }));
+        let r = review(lines);
+        let (_, rows, sel) = level(&r);
+        assert!(rows[sel].contains('…'), "{}", rows[sel]);
+    }
+
+    #[test]
+    fn a_literal_backslash_cannot_pass_for_an_escape() {
+        let tab = review(json_to_lines(&serde_json::json!({"m": "a\tb"})));
+        let text = review(json_to_lines(&serde_json::json!({"m": "a\\u{9}b"})));
+        assert_eq!(level(&tab).1, vec![r"m: a\u{9}b"]);
+        assert_eq!(level(&text).1, vec![r"m: a\\u{9}b"]);
+    }
+
+    #[test]
+    fn a_blank_transaction_shows_something_to_read() {
+        let r = review(json_to_lines(&serde_json::json!(" ")));
+        assert_eq!(level(&r).1, vec![r#"" ""#]);
+    }
+}
