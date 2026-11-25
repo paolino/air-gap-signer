@@ -1,5 +1,6 @@
 use minifb::Window;
 use signer_core::display::DisplayLine;
+use signer_core::review::View;
 use signer_hal::HalError;
 
 const WIDTH: usize = 640;
@@ -203,12 +204,15 @@ static FONT_8X8: [u8; 96 * 8] = [
     0x70,0x18,0x18,0x0E,0x18,0x18,0x70,0x00,
     // 126 '~'
     0x76,0xDC,0x00,0x00,0x00,0x00,0x00,0x00,
-    // 127 DEL (blank)
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    // 127: drawn for '…' (U+2026)
+    0x00,0x00,0x00,0x00,0x00,0x00,0xDB,0x00,
 ];
 
 const FG: u32 = 0x00FF_FFFF; // white
 const BG: u32 = 0x0010_1010; // near-black
+const ACCENT: u32 = 0x00FA_BE28; // amber, for headers
+const PENDING: u32 = 0x00FF_6E64; // light red, rows still to see
+const SELECTED_BG: u32 = 0x0030_3A60; // the review cursor
 
 pub struct SimDisplay {
     window: Window,
@@ -233,7 +237,8 @@ impl SimDisplay {
         &mut self.window
     }
 
-    fn draw_char(&mut self, ch: u8, col: usize, row: usize) {
+    /// `bold` draws each glyph row ORed with itself shifted one pixel.
+    fn draw_char(&mut self, ch: u8, col: usize, row: usize, fg: u32, bg: u32, bold: bool) {
         let idx = if (32..128).contains(&ch) {
             (ch - 32) as usize
         } else {
@@ -243,7 +248,8 @@ impl SimDisplay {
         let glyph = &FONT_8X8[idx * 8..(idx + 1) * 8];
         let x0 = col * CHAR_W;
         let y0 = row * LINE_HEIGHT;
-        for (dy, &row_bits) in glyph.iter().enumerate() {
+        for (dy, &bits) in glyph.iter().enumerate() {
+            let row_bits = if bold { bits | (bits >> 1) } else { bits };
             let y = y0 + dy;
             if y >= HEIGHT {
                 break;
@@ -253,18 +259,30 @@ impl SimDisplay {
                 if x >= WIDTH {
                     break;
                 }
-                let pixel = if row_bits & (0x80 >> dx) != 0 { FG } else { BG };
+                let pixel = if row_bits & (0x80 >> dx) != 0 { fg } else { bg };
                 self.buf[y * WIDTH + x] = pixel;
             }
         }
     }
 
     fn draw_text(&mut self, text: &str, col: usize, row: usize) {
-        for (i, ch) in text.bytes().enumerate() {
+        self.draw_text_in(text, col, row, FG, BG, false);
+    }
+
+    /// Draw one character per cell. `…` has its own glyph; any other
+    /// non-ASCII character shows as `?`.
+    fn draw_text_in(&mut self, text: &str, col: usize, row: usize, fg: u32, bg: u32, bold: bool) {
+        for (i, ch) in text.chars().enumerate() {
             if col + i >= COLS {
                 break;
             }
-            self.draw_char(ch, col + i, row);
+            let byte = match ch {
+                '…' => 127,
+                '›' => b'>',
+                c if c.is_ascii() => c as u8,
+                _ => b'?',
+            };
+            self.draw_char(byte, col + i, row, fg, bg, bold);
         }
     }
 
@@ -328,6 +346,32 @@ impl signer_hal::Display for SimDisplay {
             self.draw_text(&text, 0, content_start + i);
         }
 
+        self.update()
+    }
+
+    fn text_grid(&self) -> (usize, usize) {
+        (COLS, VISIBLE_LINES)
+    }
+
+    fn show_review(&mut self, view: &View) -> Result<(), HalError> {
+        self.clear_buf();
+        match view {
+            View::Overview { header, rows } => {
+                self.draw_text_in(header, 0, 0, ACCENT, BG, false);
+                for (i, row) in rows.iter().enumerate() {
+                    let bg = if row.selected { SELECTED_BG } else { BG };
+                    let padded = format!("{:<COLS$}", row.text);
+                    let fg = if row.pending { PENDING } else { FG };
+                    self.draw_text_in(&padded, 0, i + 1, fg, bg, row.expandable);
+                }
+            }
+            View::Detail { header, rows } => {
+                self.draw_text_in(header, 0, 0, ACCENT, BG, false);
+                for (i, row) in rows.iter().enumerate() {
+                    self.draw_text(row, 0, i + 1);
+                }
+            }
+        }
         self.update()
     }
 }

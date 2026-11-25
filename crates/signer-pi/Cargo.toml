@@ -1,0 +1,23 @@
+[package]
+name = "signer-pi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Raspberry Pi HAL: framebuffer display and GPIO buttons"
+
+[[bin]]
+name = "signer-pi-demo"
+path = "src/bin/demo.rs"
+
+[dependencies]
+signer-core = { path = "../signer-core" }
+signer-hal = { path = "../signer-hal" }
+fontdue = "0.9"
+serde_json.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpiocdev = "0.8"

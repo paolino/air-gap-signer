@@ -4,6 +4,7 @@ members = [
     "crates/signer-core",
     "crates/signer-hal",
     "crates/signer-sim",
+    "crates/signer-pi",
     "crates/usb-pack",
     "interpreters/echo-hex",
 ]

@@ -20,10 +20,16 @@ fn flatten(value: &Value, indent: usize, key: Option<&str>, out: &mut Vec<Displa
     match value {
         Value::Object(map) => {
             if let Some(k) = key {
+                // An empty object shows `{}`, never a bare key.
+                let value = if map.is_empty() {
+                    "{}".into()
+                } else {
+                    String::new()
+                };
                 out.push(DisplayLine {
                     indent,
                     key: Some(k.into()),
-                    value: String::new(),
+                    value,
                 });
             }
             for (k, v) in map {
@@ -44,6 +50,9 @@ fn flatten(value: &Value, indent: usize, key: Option<&str>, out: &mut Vec<Displa
         }
         _ => {
             let text = match value {
+                // Quote a string that is empty or has blanks at either end,
+                // so it never shows as nothing.
+                Value::String(s) if s.is_empty() || s.trim() != s => format!("\"{s}\""),
                 Value::String(s) => s.clone(),
                 Value::Number(n) => n.to_string(),
                 Value::Bool(b) => b.to_string(),
@@ -77,6 +86,13 @@ pub fn render_text(lines: &[DisplayLine]) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn blank_strings_and_empty_objects_stay_visible() {
+        let val = json!({"a": "", "b": " ", "c": "x ", "d": {}, "e": "ok"});
+        let values: Vec<String> = json_to_lines(&val).into_iter().map(|l| l.value).collect();
+        assert_eq!(values, vec![r#""""#, r#"" ""#, r#""x ""#, "{}", "ok"]);
+    }
 
     #[test]
     fn simple_object() {
