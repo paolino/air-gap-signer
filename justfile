@@ -9,6 +9,16 @@ build:
 build-wasm:
     cargo build -p echo-hex --target wasm32-unknown-unknown --release
 
+# Cross-compile the Raspberry Pi demo (static aarch64 binary)
+build-pi:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$(uname -s)" != Linux ]; then echo "build-pi: skipped, needs a Linux host"; exit 0; fi
+    cargo build -p signer-pi --release --target aarch64-unknown-linux-musl
+    bin=target/aarch64-unknown-linux-musl/release/signer-pi-demo
+    file "$bin"
+    file "$bin" | grep -q "ARM aarch64.*statically linked"
+
 # Run all tests
 test: build-wasm
     cargo test --workspace --exclude echo-hex
@@ -26,7 +36,7 @@ lint:
     cargo clippy --workspace --exclude echo-hex -- -D warnings
 
 # Full CI pipeline
-ci: format-check lint build build-wasm test gerbers schematic
+ci: format-check lint build build-wasm build-pi test gerbers schematic
 
 # Build documentation
 build-docs:
