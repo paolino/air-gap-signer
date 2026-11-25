@@ -18,6 +18,14 @@ name = "se051-ed25519-check"
 path = "src/bin/se051-ed25519-check.rs"
 
 [[bin]]
+name = "fido-probe"
+path = "src/bin/fido-probe.rs"
+
+[[bin]]
+name = "se051-keys"
+path = "src/bin/se051-keys.rs"
+
+[[bin]]
 name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
@@ -27,6 +35,11 @@ signer-hal = { path = "../signer-hal" }
 fontdue = "0.9"
 serde_json.workspace = true
 hex.workspace = true
+ed25519-dalek.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+rand.workspace = true
+ciborium.workspace = true
 clap.workspace = true
 
 [dev-dependencies]
@@ -37,4 +50,12 @@ gpiocdev = "0.8"
 se05x = { version = "0.4.2", default-features = false, features = ["embedded-hal-v1.0"] }
 linux-embedded-hal = { version = "0.5", default-features = false, features = ["i2c"] }
 embedded-hal = "1"
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "arithmetic"] }
+hkdf = "0.12"
+hmac = "0.12"
+aes = "0.8"
+cbc = "0.1"
+aes-gcm = "0.10"
+miniz_oxide = "0.8"
+unicode-normalization = "0.1"
 i2cdev = "0.6"
