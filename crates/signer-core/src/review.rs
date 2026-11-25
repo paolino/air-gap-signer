@@ -45,8 +45,6 @@ pub enum Outcome {
 pub struct Row {
     pub text: String,
     pub selected: bool,
-    /// A group the user can go into with right; drawn in bold.
-    pub expandable: bool,
     /// Something here, or under it, still has to be shown before Confirm
     /// counts; drawn in its own colour.
     pub pending: bool,
@@ -258,7 +256,6 @@ impl Review {
                     .map(|(i, (node, depth))| Row {
                         text: self.entry_text(node, depth).0,
                         selected: i == self.cursor,
-                        expandable: self.expandable(i),
                         pending: self.pending(node),
                         waived: self.waived[node],
                     })
@@ -689,18 +686,6 @@ mod tests {
         assert!(header.starts_with("tx "), "{header}");
         assert_eq!(rows, vec!["fee: 171485", "outputs", "  _0", "  _1"]);
         assert_eq!(sel, 0);
-    }
-
-    #[test]
-    fn only_entries_you_can_go_into_are_marked() {
-        let r = review(tx());
-        match r.view() {
-            View::Overview { rows, .. } => {
-                let marks: Vec<_> = rows.iter().map(|r| r.expandable).collect();
-                assert_eq!(marks, vec![false, false, true, true]);
-            }
-            v => panic!("expected a level, got {v:?}"),
-        }
     }
 
     #[test]

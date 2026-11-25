@@ -42,8 +42,8 @@ validity_e…: 87654321
   and says `OK?` when nothing is left.
 - Below it are the **entries** of that level, and under each group its
   own entries, indented. A group whose entries are listed under it is a
-  plain heading (`outputs`). A nested group (`_0`) is drawn in **bold**:
-  bold means right goes into it. Values are `key: value`. List items are
+  plain heading (`outputs`). A nested group (`_0`) shows just its name
+  — no `: value` — and right goes into it. Values are `key: value`. List items are
   numbered `_0`, `_1`, …
 - **Colour** says what still blocks approval: a row is light red while
   it, or anything under it, has not been shown yet — an unread cut value,
@@ -52,7 +52,7 @@ validity_e…: 87654321
 - The cursor is an amber stripe at the right edge of its row, in the
   margin past the last column, so it never covers text or changes its
   colour.
-- The cursor stops on fields and on bold groups, never on a heading —
+- The cursor stops on fields and on nested groups, never on a heading —
   unless the heading's name is cut and still has to be read.
 - A value too long for its row is **cut in the middle** with `…`,
   keeping the key and both ends of the value. A group whose name does
@@ -72,8 +72,8 @@ validity_e…: 87654321
 
 | Control | In a level | In a value |
 |---|---|---|
-| joystick up / down | move the cursor to the previous / next field or bold group, skipping headings; a press at the last or first row wraps around; held, it repeats and stops there | previous / next page |
-| joystick right | on a bold group: go into it; on a value or a cut name: show it in full; on a heading: nothing | from a group's full name: go into it |
+| joystick up / down | move the cursor to the previous / next field or nested group, skipping headings; a press at the last or first row wraps around; held, it repeats and stops there | previous / next page |
+| joystick right | on a nested group: go into it; on a value or a cut name: show it in full; on a heading: nothing | from a group's full name: go into it |
 | joystick left | back to the screen you came from, onto the row you left | back to the level |
 | button #5 | on a light-red row (a branch or a cut value still to see): accept it unread; on a grey row: undo that; elsewhere: approve, once nothing is left to see | — |
 | button #6 | reject | reject |
@@ -147,8 +147,8 @@ in [#21](https://github.com/paolino/air-gap-signer/issues/21).
 | Cut long values in the middle, keep the key | Wrap every value in the list; cut at the end | Wrapping makes the list unreadable; cutting at the end hides the tail of an address, which is where address-poisoning attacks hide differences. |
 | #5 locked until everything was shown | Let the user approve at any time | A field the user never saw cannot have been checked. |
 | Joystick right and left to go in and out | Joystick press to open | Tried on the device: pressing the joystick in was awkward. |
-| Groups in bold, no marker | A `›` before each group | Tried on the device: the marker was hard to read at this size. |
-| Bold only for groups right can go into; headings plain | Bold for every group; counts like `{2}` after nested groups | Tried on the device: a bold heading that right cannot open is misleading, and counts added noise; the list keys `_0`, `_1` already say it is a list. |
+| Groups shown by name alone, no marker, no bold | A `›` before each group; groups in bold | Tried on the device: the marker was hard to read and the bold was confusing; a name without `: value` already says it is a group. |
+| No counts after nested groups | Counts like `{2}` after nested groups | Tried on the device: counts added noise; the list keys `_0`, `_1` already say it is a list. |
 | Light red for rows still to see, white when done, amber header | One colour for everything; a counter only; a cyan header | The counter says how much is left, the colour says where. Tried on the device: cyan read almost white on this panel, so the header lost its colour. |
 | Spell out non-ASCII as `\u{hex}` | Draw it with the font | The font lacks most scripts; missing glyphs all look the same, so different values could look identical. |
 | List items as `_0`, `_1` | `[0]`, `[1]` | Tried on the device: lighter to read. An object key literally named `_0` would look like a list item; transaction fields are not named that way. |

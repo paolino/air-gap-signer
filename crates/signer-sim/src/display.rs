@@ -238,8 +238,7 @@ impl SimDisplay {
         &mut self.window
     }
 
-    /// `bold` draws each glyph row ORed with itself shifted one pixel.
-    fn draw_char(&mut self, ch: u8, col: usize, row: usize, fg: u32, bg: u32, bold: bool) {
+    fn draw_char(&mut self, ch: u8, col: usize, row: usize, fg: u32, bg: u32) {
         let idx = if (32..128).contains(&ch) {
             (ch - 32) as usize
         } else {
@@ -249,8 +248,7 @@ impl SimDisplay {
         let glyph = &FONT_8X8[idx * 8..(idx + 1) * 8];
         let x0 = col * CHAR_W;
         let y0 = row * LINE_HEIGHT;
-        for (dy, &bits) in glyph.iter().enumerate() {
-            let row_bits = if bold { bits | (bits >> 1) } else { bits };
+        for (dy, &row_bits) in glyph.iter().enumerate() {
             let y = y0 + dy;
             if y >= HEIGHT {
                 break;
@@ -267,12 +265,12 @@ impl SimDisplay {
     }
 
     fn draw_text(&mut self, text: &str, col: usize, row: usize) {
-        self.draw_text_in(text, col, row, FG, BG, false);
+        self.draw_text_in(text, col, row, FG, BG);
     }
 
     /// Draw one character per cell. `…` has its own glyph; any other
     /// non-ASCII character shows as `?`.
-    fn draw_text_in(&mut self, text: &str, col: usize, row: usize, fg: u32, bg: u32, bold: bool) {
+    fn draw_text_in(&mut self, text: &str, col: usize, row: usize, fg: u32, bg: u32) {
         for (i, ch) in text.chars().enumerate() {
             if col + i >= COLS {
                 break;
@@ -283,7 +281,7 @@ impl SimDisplay {
                 c if c.is_ascii() => c as u8,
                 _ => b'?',
             };
-            self.draw_char(byte, col + i, row, fg, bg, bold);
+            self.draw_char(byte, col + i, row, fg, bg);
         }
     }
 
@@ -358,7 +356,7 @@ impl signer_hal::Display for SimDisplay {
         self.clear_buf();
         match view {
             View::Overview { header, rows } => {
-                self.draw_text_in(header, 0, 0, ACCENT, BG, false);
+                self.draw_text_in(header, 0, 0, ACCENT, BG);
                 for (i, row) in rows.iter().enumerate() {
                     let bg = if row.selected { SELECTED_BG } else { BG };
                     let padded = format!("{:<COLS$}", row.text);
@@ -367,11 +365,11 @@ impl signer_hal::Display for SimDisplay {
                         (false, true) => WAIVED,
                         (false, false) => FG,
                     };
-                    self.draw_text_in(&padded, 0, i + 1, fg, bg, row.expandable);
+                    self.draw_text_in(&padded, 0, i + 1, fg, bg);
                 }
             }
             View::Detail { header, rows } => {
-                self.draw_text_in(header, 0, 0, ACCENT, BG, false);
+                self.draw_text_in(header, 0, 0, ACCENT, BG);
                 for (i, row) in rows.iter().enumerate() {
                     self.draw_text(row, 0, i + 1);
                 }

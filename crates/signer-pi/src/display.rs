@@ -63,8 +63,6 @@ pub struct FbDisplay {
     file: File,
     frame: Frame,
     font: TextFont,
-    /// Groups are drawn in bold.
-    bold: TextFont,
     fg: Rgb,
     bg: Rgb,
     accent: Rgb,
@@ -115,7 +113,6 @@ impl FbDisplay {
             file,
             frame: Frame::new(SIZE, SIZE),
             font: TextFont::mono(px),
-            bold: TextFont::mono_bold(px),
             fg: Rgb(240, 240, 240),
             bg: Rgb(0, 0, 0),
             accent: Rgb(250, 190, 40),
@@ -128,7 +125,7 @@ impl FbDisplay {
     /// Columns whose glyphs, overhang included, all end before the
     /// cursor stripe.
     fn cols(&self) -> usize {
-        let ink = self.font.ink_right.max(self.bold.ink_right);
+        let ink = self.font.ink_right;
         match (SIZE - CURSOR_WIDTH).checked_sub(ink) {
             Some(room) => room / self.font.advance + 1,
             None => 0,
@@ -137,7 +134,7 @@ impl FbDisplay {
 
     /// Rows whose glyphs, descenders included, all land on the panel.
     fn rows(&self) -> usize {
-        let ink = self.font.ink_bottom.max(self.bold.ink_bottom);
+        let ink = self.font.ink_bottom;
         match SIZE.checked_sub(ink) {
             Some(room) => room / self.font.line_height + 1,
             None => 0,
@@ -208,11 +205,7 @@ impl signer_hal::Display for FbDisplay {
                 let h = self.font.line_height;
                 for (i, row) in rows.iter().enumerate() {
                     let y = (i + 1) * h;
-                    let font = if row.expandable {
-                        &self.bold
-                    } else {
-                        &self.font
-                    };
+                    let font = &self.font;
                     let colour = match (row.pending, row.waived) {
                         (true, _) => self.pending,
                         (false, true) => self.waived,
@@ -311,7 +304,6 @@ mod tests {
         let row = |text: &str, selected| Row {
             text: text.into(),
             selected,
-            expandable: false,
             pending: false,
             waived: false,
         };
@@ -371,7 +363,6 @@ mod tests {
         let row = |text: &str, pending| Row {
             text: text.into(),
             selected: false,
-            expandable: false,
             pending,
             waived: false,
         };
@@ -409,7 +400,8 @@ mod tests {
         for px in (8..=60).map(|p| p as f32).chain([10.2]) {
             let d = FbDisplay::with_file(path.clone(), File::create(&path).unwrap(), px);
             let last_top = (d.rows() - 1) * d.font.line_height;
-            for font in [&d.font, &d.bold] {
+            {
+                let font = &d.font;
                 assert!(
                     last_top + font.ink_bottom <= SIZE,
                     "size {px}: last row inks down to {}",
@@ -426,7 +418,8 @@ mod tests {
         for px in (8..=60).map(|p| p as f32).chain([10.2]) {
             let d = FbDisplay::with_file(path.clone(), File::create(&path).unwrap(), px);
             let last = (d.cols() - 1) * d.font.advance;
-            for font in [&d.font, &d.bold] {
+            {
+                let font = &d.font;
                 assert!(
                     last + font.ink_right <= SIZE - CURSOR_WIDTH,
                     "size {px}: the last column inks to {}",
