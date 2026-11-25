@@ -74,8 +74,8 @@ validity_e…: 87654321
 |---|---|---|
 | joystick up / down | move the cursor to the previous / next field or bold group, skipping headings; a press at the last or first row wraps around; held, it repeats and stops there | previous / next page |
 | joystick right | on a bold group: go into it; on a value or a cut name: show it in full; on a heading: nothing | from a group's full name: go into it |
-| joystick left | back to the screen you came from, onto the row you left | back to the level; in the accept question: don't accept |
-| button #5 | on a bold group that still hides something: ask to accept it without reading; elsewhere: approve, once nothing is left to see | in the accept question: accept |
+| joystick left | back to the screen you came from, onto the row you left | back to the level |
+| button #5 | on a light-red row (a branch or a cut value still to see): accept it unread; on a grey row: undo that; elsewhere: approve, once nothing is left to see | — |
 | button #6 | reject | reject |
 | joystick press | — | — |
 
@@ -93,9 +93,7 @@ stateDiagram-v2
     Level --> Value: right on a value
     Value --> Value: up / down turns the page
     Value --> Level: left
-    Level --> Asking: #5 on a bold group with something left
-    Asking --> Level: #5 accepts it unread, left cancels
-    Asking --> Rejected: #6
+    Level --> Level: #5 on a light-red row accepts it unread, on a grey row undoes that
     Level --> Approved: #5 and nothing left to see
     Level --> Level: #5 while something is left (ignored)
     Level --> Rejected: #6
@@ -120,16 +118,16 @@ An entry reaches the screen in its parent's level, or nested one level
 under its group in the level above; deeper branches must be visited. Opening a long value without
 paging to its end does not count.
 
-## Accepting a branch without reading it
+## Accepting without reading
 
-With the cursor on a bold group that still hides something, #5 asks
-"Accept `_1` and everything in it without reading it?". #5 accepts, left
-cancels, #6 still rejects the whole transaction. An accepted branch and
-everything in it stop blocking approval and are drawn **grey**, apart
-from what was actually read; when nothing is left the header says
-`OK? 2 waived` instead of `OK?`. Approval then means "everything was
-shown, or knowingly accepted unread". A single value is never waived:
-#5 on a value only approves, once nothing is left.
+On a light-red row — a branch with something still to see, or a value
+cut with `…` and not read — #5 accepts it unread at once. It and
+everything under it stop blocking approval and turn **grey**, apart from
+what was actually read; #5 again on the grey row undoes it. When nothing
+is left the header says `OK? 2 waived` instead of `OK?`, so approval
+means "everything was shown, or knowingly accepted unread". On a row
+already read, #5 only approves, once nothing is left; on a grey row it
+undoes instead, which the header shows before anything is approved.
 
 ## Buttons cannot answer a screen they did not see
 
@@ -157,4 +155,4 @@ in [#21](https://github.com/paolino/air-gap-signer/issues/21).
 | Cursor skips headings | Cursor stops on every row | A heading is not a field and right does nothing on it. |
 | Cursor as an amber stripe at the right edge | Full-width bars (dark blue, light, amber, colour-inverted, grey), outline box, underline, left stripe, highlighter | Tried on the device and on camera: bars made text unreadable on camera; the stripe keeps every row's text and colour as is. |
 | Only up and down repeat when held | Every control repeats | A held button must never confirm, reject, open or go back by itself. |
-| A branch can be accepted unread, after a question, shown grey, counted in the header | Only full review; #5 waives at once; waiving single values | Long transactions are impractical to walk through entirely; waiving stays deliberate (a question, not one press) and visible (grey rows, `OK? 2 waived`), and a value can never be waived. |
+| #5 accepts a branch or a cut value unread at once, #5 again undoes; grey rows; counted in the header | Only full review; a confirmation question before accepting; values never accepted | Tried on the device: the question was one press too many and the undo serves the same purpose; accepting stays visible (grey rows, `OK? 2 waived`). |

@@ -185,36 +185,34 @@ mod tests {
     }
 
     #[test]
-    fn a_cut_value_must_be_opened_before_approval() {
+    fn a_cut_value_is_read_or_accepted_before_approval() {
         // The payload on the test stick: its hex is too long for a row.
-        let mut hal = Hal {
-            presses: VecDeque::from([
-                ButtonEvent::Confirm,
-                ButtonEvent::Open,
-                ButtonEvent::Back,
-                ButtonEvent::Confirm,
-            ]),
-            ..Default::default()
+        let headers = |presses: &[ButtonEvent]| {
+            let mut hal = Hal {
+                presses: presses.iter().copied().collect(),
+                ..Default::default()
+            };
+            let mut usb = stick(b"pay 5 ADA to Bob", echo_hex(), spec("Test payment"));
+            let decision = review_stick(&mut hal, &mut usb).unwrap();
+            let headers: Vec<String> = hal
+                .views
+                .iter()
+                .map(|v| match v {
+                    View::Overview { header, .. } | View::Detail { header, .. } => header.clone(),
+                })
+                .collect();
+            (decision, headers)
         };
-        let mut usb = stick(b"pay 5 ADA to Bob", echo_hex(), spec("Test payment"));
-        assert_eq!(
-            review_stick(&mut hal, &mut usb).unwrap(),
-            Decision::Approved
-        );
-        let headers: Vec<String> = hal
-            .views
-            .iter()
-            .map(|v| match v {
-                View::Overview { header, .. } | View::Detail { header, .. } => header.clone(),
-            })
-            .collect();
-        assert!(headers[0].ends_with("1 left"), "{:?}", headers);
-        assert!(
-            headers[1].ends_with("1 left"),
-            "the first Confirm was refused: {:?}",
-            headers
-        );
-        assert!(headers[3].ends_with("OK?"), "{:?}", headers);
+        use ButtonEvent::{Back, Confirm, Down, Open};
+        // Read it in full, then approve.
+        let (decision, h) = headers(&[Open, Back, Confirm]);
+        assert_eq!(decision, Decision::Approved);
+        assert!(h[0].ends_with("1 left"), "{h:?}");
+        assert!(h[2].ends_with("OK?"), "{h:?}");
+        // Accept it unread with #5, then approve from another row.
+        let (decision, h) = headers(&[Confirm, Down, Confirm]);
+        assert_eq!(decision, Decision::Approved);
+        assert!(h[1].ends_with("OK? 1 waived"), "{h:?}");
     }
 
     #[test]

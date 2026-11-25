@@ -112,6 +112,10 @@ struct Node {
     children: Vec<usize>,
 }
 
+/// An accepted branch or value, and its entries' `(node, unseen,
+/// unopened)` state before it was accepted.
+type Waiver = (usize, Vec<(usize, bool, bool)>);
+
 pub struct Review {
     /// Node 0 is the root.
     nodes: Vec<Node>,
@@ -121,12 +125,11 @@ pub struct Review {
     at: usize,
     /// Index of the selected row in `tree()`.
     cursor: usize,
-    /// Asking whether to accept the selected branch without reading it.
-    asking: bool,
     /// Entries accepted without being read.
     waived: Vec<bool>,
-    /// How many branches were accepted without being read.
-    waived_branches: usize,
+    /// Each accepted branch, with what its entries' state was before, so
+    /// accepting can be undone.
+    waivers: Vec<Waiver>,
     /// The screens left behind by going right, as `(at, cursor)`.
     back: Vec<(usize, usize, usize)>,
     /// First row of `tree()` on screen.
@@ -166,9 +169,8 @@ impl Review {
             rows,
             at: 0,
             cursor: 0,
-            asking: false,
             waived: vec![false; nodes_len],
-            waived_branches: 0,
+            waivers: Vec::new(),
             back: Vec::new(),
             top: 0,
             detail: None,
@@ -188,19 +190,6 @@ impl Review {
     }
 
     pub fn handle(&mut self, event: ButtonEvent) -> Outcome {
-        if self.asking {
-            match event {
-                ButtonEvent::Reject => return Outcome::Rejected,
-                ButtonEvent::Confirm => {
-                    self.waive(self.selected());
-                    self.asking = false;
-                }
-                ButtonEvent::Back => self.asking = false,
-                _ => return Outcome::Continue,
-            }
-            self.mark_shown();
-            return Outcome::Continue;
-        }
         let entries = self.tree().len();
         match (self.detail, event) {
             (_, ButtonEvent::Reject) => return Outcome::Rejected,
@@ -238,13 +227,14 @@ impl Review {
                     self.top = top;
                 }
             }
-            // #5 on a branch that still hides something offers to accept
-            // it without reading; anywhere else it approves, once nothing
-            // is left.
-            (None, ButtonEvent::Confirm)
-                if self.expandable(self.cursor) && self.pending(self.selected()) =>
-            {
-                self.asking = true
+            // #5 on something accepted undoes it; on a branch or value
+            // that still hides something it accepts it unread; anywhere
+            // else it approves, once nothing is left.
+            (None, ButtonEvent::Confirm) if self.accepted(self.selected()) => {
+                self.unwaive(self.selected())
+            }
+            (None, ButtonEvent::Confirm) if self.pending(self.selected()) => {
+                self.waive(self.selected())
             }
             (None, ButtonEvent::Confirm) if self.remaining() == 0 => return Outcome::Confirmed,
             (None, _) => {}
@@ -256,22 +246,9 @@ impl Review {
     }
 
     pub fn view(&self) -> View {
-        if self.asking {
-            let node = self.selected();
-            let key = self.nodes[node].key.as_deref().unwrap_or("");
-            let mut rows = wrap(
-                &format!("Accept {key} and everything in it without reading it?"),
-                self.cols,
-            );
-            rows.extend(["".to_string(), "5: accept".into(), "<: back".into()]);
-            return View::Detail {
-                header: self.header(&self.branch(node), "accept?"),
-                rows,
-            };
-        }
         match self.detail {
             None => {
-                let status = match (self.remaining(), self.waived_branches) {
+                let status = match (self.remaining(), self.waivers.len()) {
                     (0, 0) => "OK?".to_string(),
                     (0, w) => format!("OK? {w} waived"),
                     (n, _) => format!("{n} left"),
@@ -322,17 +299,36 @@ impl Review {
                 .any(|&c| self.unseen[c] || self.pending(c))
     }
 
-    /// Accept `node` and everything under it as if read, and remember
-    /// that it was not.
+    /// Whether `node` is the root of an accepted branch.
+    fn accepted(&self, node: usize) -> bool {
+        self.waivers.iter().any(|(root, _)| *root == node)
+    }
+
+    /// Accept `node` and everything under it as if read, remembering their
+    /// state so it can be undone.
     fn waive(&mut self, node: usize) {
+        let mut before = Vec::new();
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
+            before.push((n, self.unseen[n], self.unopened[n]));
             self.unseen[n] = false;
             self.unopened[n] = false;
             self.waived[n] = true;
             stack.extend(self.nodes[n].children.iter().copied());
         }
-        self.waived_branches += 1;
+        self.waivers.push((node, before));
+    }
+
+    /// Undo accepting `node`: its entries are as they were before.
+    fn unwaive(&mut self, node: usize) {
+        if let Some(i) = self.waivers.iter().position(|(root, _)| *root == node) {
+            let (_, before) = self.waivers.remove(i);
+            for (n, unseen, unopened) in before {
+                self.unseen[n] = unseen;
+                self.unopened[n] = unopened;
+                self.waived[n] = false;
+            }
+        }
     }
 
     fn enter(&mut self, group: usize) {
@@ -1043,98 +1039,6 @@ mod tests {
     }
 
     #[test]
-    fn confirm_on_a_branch_with_something_to_see_asks_to_accept_it() {
-        let mut r = review(tx());
-        select(&mut r, "  _1");
-        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
-        let (header, rows) = detail(&r);
-        assert!(header.contains("_1"), "{header}");
-        let text = rows.concat();
-        assert!(text.contains("without reading"), "{text}");
-        assert!(text.contains("5") && text.contains("back"), "{text}");
-    }
-
-    #[test]
-    fn accepting_waives_the_branch_and_marks_it() {
-        let mut r = review(tx());
-        let before = r.remaining();
-        select(&mut r, "  _1");
-        r.handle(ButtonEvent::Confirm);
-        r.handle(ButtonEvent::Confirm);
-        assert_eq!(
-            r.remaining(),
-            before - 2,
-            "the two fields of _1 no longer block"
-        );
-        let row = rows_of(&r)
-            .into_iter()
-            .find(|row| row.text == "  _1")
-            .unwrap();
-        assert!(row.waived && !row.pending, "{row:?}");
-        let other = rows_of(&r)
-            .into_iter()
-            .find(|row| row.text == "  _0")
-            .unwrap();
-        assert!(!other.waived);
-    }
-
-    #[test]
-    fn back_cancels_and_six_still_rejects_from_the_question() {
-        let mut r = review(tx());
-        let before = r.remaining();
-        select(&mut r, "  _1");
-        r.handle(ButtonEvent::Confirm);
-        r.handle(ButtonEvent::Back);
-        assert_eq!(r.remaining(), before);
-        assert!(matches!(r.view(), View::Overview { .. }));
-        r.handle(ButtonEvent::Confirm);
-        assert_eq!(r.handle(ButtonEvent::Reject), Outcome::Rejected);
-    }
-
-    #[test]
-    fn approval_after_waiving_says_how_many_branches_were_waived() {
-        let mut r = review(tx());
-        for branch in ["  _0", "  _1"] {
-            select(&mut r, branch);
-            r.handle(ButtonEvent::Confirm);
-            r.handle(ButtonEvent::Confirm);
-        }
-        assert_eq!(r.remaining(), 0);
-        let (header, _, _) = level(&r);
-        assert!(header.ends_with("OK? 2 waived"), "{header}");
-        select(&mut r, "fee");
-        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
-    }
-
-    #[test]
-    fn confirm_on_a_value_never_waives() {
-        let mut r = review(tx());
-        select(&mut r, "fee");
-        let before = r.remaining();
-        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
-        assert!(
-            matches!(r.view(), View::Overview { .. }),
-            "no question for a value"
-        );
-        assert_eq!(r.remaining(), before);
-    }
-
-    #[test]
-    fn a_branch_already_seen_is_not_offered_for_waiving() {
-        let mut r = review(tx());
-        select(&mut r, "  _1");
-        r.handle(ButtonEvent::Open);
-        r.handle(ButtonEvent::Back);
-        let before = r.remaining();
-        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
-        assert!(
-            matches!(r.view(), View::Overview { .. }),
-            "nothing to waive"
-        );
-        assert_eq!(r.remaining(), before);
-    }
-
-    #[test]
     fn holding_stops_at_the_ends_and_a_fresh_press_wraps() {
         let mut r = review(tx());
         for _ in 0..10 {
@@ -1207,5 +1111,112 @@ mod tests {
         let (_, rows, sel) = level(&r);
         assert_eq!(rows[sel], "  _0: x");
         assert_eq!(rows[sel - 1], "list", "the heading above stays in view");
+    }
+
+    #[test]
+    fn five_on_a_branch_accepts_it_at_once() {
+        let mut r = review(tx());
+        let before = r.remaining();
+        select(&mut r, "  _1");
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        assert!(matches!(r.view(), View::Overview { .. }), "no question");
+        assert_eq!(
+            r.remaining(),
+            before - 2,
+            "the two fields of _1 no longer block"
+        );
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text == "  _1")
+            .unwrap();
+        assert!(row.waived && !row.pending, "{row:?}");
+    }
+
+    #[test]
+    fn five_again_undoes_it() {
+        let mut r = review(tx());
+        let before = r.remaining();
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Confirm);
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.remaining(), before);
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text == "  _1")
+            .unwrap();
+        assert!(!row.waived && row.pending, "{row:?}");
+    }
+
+    #[test]
+    fn approval_after_accepting_says_how_many_branches_were_accepted() {
+        let mut r = review(tx());
+        for branch in ["  _0", "  _1"] {
+            select(&mut r, branch);
+            r.handle(ButtonEvent::Confirm);
+        }
+        assert_eq!(r.remaining(), 0);
+        let (header, _, _) = level(&r);
+        assert!(header.ends_with("OK? 2 waived"), "{header}");
+        select(&mut r, "fee");
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
+    }
+
+    #[test]
+    fn five_on_a_cut_value_accepts_it_and_again_undoes_it() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open); // into output _1: its address is cut
+        r.handle(ButtonEvent::Back);
+        select(&mut r, "  _0");
+        r.handle(ButtonEvent::Open); // into output _0
+        let before = r.remaining();
+        select(&mut r, "address: addr_");
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(
+            r.remaining(),
+            before - 1,
+            "the cut address no longer blocks"
+        );
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text.starts_with("address"))
+            .unwrap();
+        assert!(row.waived && !row.pending, "{row:?}");
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.remaining(), before);
+    }
+
+    #[test]
+    fn five_on_a_value_already_shown_accepts_nothing() {
+        let mut r = review(tx());
+        select(&mut r, "fee");
+        let before = r.remaining();
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        assert_eq!(r.remaining(), before);
+        assert!(!rows_of(&r)[0].waived);
+    }
+
+    #[test]
+    fn a_branch_already_read_is_not_accepted() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open);
+        r.handle(ButtonEvent::Back);
+        let before = r.remaining();
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.remaining(), before);
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text == "  _1")
+            .unwrap();
+        assert!(!row.waived);
+    }
+
+    #[test]
+    fn six_still_rejects() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.handle(ButtonEvent::Reject), Outcome::Rejected);
     }
 }
