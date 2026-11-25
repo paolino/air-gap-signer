@@ -3,7 +3,6 @@
 use fontdue::{Font, FontSettings};
 
 static DEJAVU_SANS_MONO: &[u8] = include_bytes!("../assets/DejaVuSansMono.ttf");
-static DEJAVU_SANS_MONO_BOLD: &[u8] = include_bytes!("../assets/DejaVuSansMono-Bold.ttf");
 
 /// An 8-bit-per-channel colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,11 +46,6 @@ pub struct TextFont {
 impl TextFont {
     pub fn mono(px: f32) -> Self {
         Self::load(DEJAVU_SANS_MONO, px)
-    }
-
-    /// The bold weight; same advance as `mono`, so columns line up.
-    pub fn mono_bold(px: f32) -> Self {
-        Self::load(DEJAVU_SANS_MONO_BOLD, px)
     }
 
     fn load(bytes: &'static [u8], px: f32) -> Self {
@@ -250,24 +244,9 @@ mod tests {
     }
 
     #[test]
-    fn bold_has_the_same_advance_and_more_ink() {
-        let (regular, bold) = (TextFont::mono(18.0), TextFont::mono_bold(18.0));
-        assert_eq!(regular.advance, bold.advance);
-        assert_eq!(regular.line_height, bold.line_height);
-        let ink = |font: &TextFont| {
-            let mut f = Frame::new(240, 30);
-            f.draw_text(font, "outputs (2)", 0, 0, WHITE, BLACK);
-            f.pixels.iter().map(|&p| (p >> 11) as u32).sum::<u32>()
-        };
-        assert!(
-            ink(&bold) > ink(&regular) * 11 / 10,
-            "bold must be visibly heavier"
-        );
-    }
-
-    #[test]
     fn ink_bottom_covers_every_drawable_glyph() {
-        for font in [TextFont::mono(18.0), TextFont::mono_bold(18.0)] {
+        {
+            let font = TextFont::mono(18.0);
             let mut f = Frame::new(30, 60);
             for ch in (' '..='~').chain(['…', '›']) {
                 f.fill(BLACK);

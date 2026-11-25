@@ -62,10 +62,10 @@ fn enter_pin<H: Display + Buttons>(hal: &mut H, prompt: &str) -> Result<Option<V
         hal.show_lines(&lines, 0)?;
 
         match hal.wait_event()? {
-            ButtonEvent::Up => {
+            ButtonEvent::Up | ButtonEvent::UpHeld => {
                 digits[pos] = (digits[pos] + 1) % 10;
             }
-            ButtonEvent::Down => {
+            ButtonEvent::Down | ButtonEvent::DownHeld => {
                 digits[pos] = (digits[pos] + 9) % 10; // wrap around: 0 -> 9
             }
             ButtonEvent::Confirm => {

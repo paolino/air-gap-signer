@@ -20,6 +20,11 @@ pub enum ButtonEvent {
     Reject,
     Up,
     Down,
+    /// Up or down repeated while the joystick is held: like `Up` and
+    /// `Down`, but the cursor stops at the first and last row instead of
+    /// wrapping around.
+    UpHeld,
+    DownHeld,
     /// Enter the selected group, or show the selected value in full
     /// (joystick right).
     Open,
@@ -40,11 +45,12 @@ pub enum Outcome {
 pub struct Row {
     pub text: String,
     pub selected: bool,
-    /// A group the user can go into with right; drawn in bold.
-    pub expandable: bool,
     /// Something here, or under it, still has to be shown before Confirm
     /// counts; drawn in its own colour.
     pub pending: bool,
+    /// Accepted without being read (here or in a branch above); drawn
+    /// apart from what was actually seen.
+    pub waived: bool,
 }
 
 /// What the display must draw now: a header row, then the body.
@@ -104,6 +110,10 @@ struct Node {
     children: Vec<usize>,
 }
 
+/// An accepted branch or value, and its entries' `(node, unseen,
+/// unopened)` state before it was accepted.
+type Waiver = (usize, Vec<(usize, bool, bool)>);
+
 pub struct Review {
     /// Node 0 is the root.
     nodes: Vec<Node>,
@@ -113,8 +123,15 @@ pub struct Review {
     at: usize,
     /// Index of the selected row in `tree()`.
     cursor: usize,
+    /// Entries accepted without being read.
+    waived: Vec<bool>,
+    /// Each accepted branch, with what its entries' state was before, so
+    /// accepting can be undone.
+    waivers: Vec<Waiver>,
     /// The screens left behind by going right, as `(at, cursor)`.
-    back: Vec<(usize, usize)>,
+    back: Vec<(usize, usize, usize)>,
+    /// First row of `tree()` on screen.
+    top: usize,
     /// `Some(page)` while the selected entry is shown in full.
     detail: Option<usize>,
     /// Entries never on screen.
@@ -143,13 +160,17 @@ impl Review {
             .collect();
         let mut unseen = vec![true; nodes.len()];
         unseen[0] = false;
+        let nodes_len = nodes.len();
         let mut review = Self {
             nodes,
             cols,
             rows,
             at: 0,
             cursor: 0,
+            waived: vec![false; nodes_len],
+            waivers: Vec::new(),
             back: Vec::new(),
+            top: 0,
             detail: None,
             unseen,
             unopened,
@@ -170,8 +191,10 @@ impl Review {
         let entries = self.tree().len();
         match (self.detail, event) {
             (_, ButtonEvent::Reject) => return Outcome::Rejected,
-            (Some(page), ButtonEvent::Up) => self.show_page(page.saturating_sub(1)),
-            (Some(page), ButtonEvent::Down) => {
+            (Some(page), ButtonEvent::Up | ButtonEvent::UpHeld) => {
+                self.show_page(page.saturating_sub(1))
+            }
+            (Some(page), ButtonEvent::Down | ButtonEvent::DownHeld) => {
                 self.show_page((page + 1).min(self.pages().len() - 1))
             }
             (Some(_), ButtonEvent::Back) => self.detail = None,
@@ -182,6 +205,8 @@ impl Review {
             (Some(_), _) => {}
             (None, ButtonEvent::Up) => self.cursor = self.step(entries - 1),
             (None, ButtonEvent::Down) => self.cursor = self.step(1),
+            (None, ButtonEvent::UpHeld) => self.cursor = self.step_to_end(false),
+            (None, ButtonEvent::DownHeld) => self.cursor = self.step_to_end(true),
             (None, ButtonEvent::Open) => {
                 let node = self.selected();
                 // A value, or any entry whose name is cut, opens in full
@@ -194,10 +219,20 @@ impl Review {
                 }
             }
             (None, ButtonEvent::Back) => {
-                if let Some((at, cursor)) = self.back.pop() {
+                if let Some((at, cursor, top)) = self.back.pop() {
                     self.at = at;
                     self.cursor = cursor;
+                    self.top = top;
                 }
+            }
+            // #5 on something accepted undoes it; on a branch or value
+            // that still hides something it accepts it unread; anywhere
+            // else it approves, once nothing is left.
+            (None, ButtonEvent::Confirm) if self.accepted(self.selected()) => {
+                self.unwaive(self.selected())
+            }
+            (None, ButtonEvent::Confirm) if self.pending(self.selected()) => {
+                self.waive(self.selected())
             }
             (None, ButtonEvent::Confirm) if self.remaining() == 0 => return Outcome::Confirmed,
             (None, _) => {}
@@ -211,17 +246,18 @@ impl Review {
     pub fn view(&self) -> View {
         match self.detail {
             None => {
-                let status = match self.remaining() {
-                    0 => "OK?".to_string(),
-                    n => format!("{n} left"),
+                let status = match (self.remaining(), self.waivers.len()) {
+                    (0, 0) => "OK?".to_string(),
+                    (0, w) => format!("OK? {w} waived"),
+                    (n, _) => format!("{n} left"),
                 };
                 let rows = self
                     .window()
                     .map(|(i, (node, depth))| Row {
                         text: self.entry_text(node, depth).0,
                         selected: i == self.cursor,
-                        expandable: self.expandable(i),
                         pending: self.pending(node),
+                        waived: self.waived[node],
                     })
                     .collect();
                 View::Overview {
@@ -260,8 +296,41 @@ impl Review {
                 .any(|&c| self.unseen[c] || self.pending(c))
     }
 
+    /// Whether `node` is the root of an accepted branch.
+    fn accepted(&self, node: usize) -> bool {
+        self.waivers.iter().any(|(root, _)| *root == node)
+    }
+
+    /// Accept `node` and everything under it as if read, remembering their
+    /// state so it can be undone.
+    fn waive(&mut self, node: usize) {
+        let mut before = Vec::new();
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            before.push((n, self.unseen[n], self.unopened[n]));
+            self.unseen[n] = false;
+            self.unopened[n] = false;
+            self.waived[n] = true;
+            stack.extend(self.nodes[n].children.iter().copied());
+        }
+        self.waivers.push((node, before));
+    }
+
+    /// Undo accepting `node`: its entries are as they were before.
+    fn unwaive(&mut self, node: usize) {
+        if let Some(i) = self.waivers.iter().position(|(root, _)| *root == node) {
+            let (_, before) = self.waivers.remove(i);
+            for (n, unseen, unopened) in before {
+                self.unseen[n] = unseen;
+                self.unopened[n] = unopened;
+                self.waived[n] = false;
+            }
+        }
+    }
+
     fn enter(&mut self, group: usize) {
-        self.back.push((self.at, self.cursor));
+        self.back.push((self.at, self.cursor, self.top));
+        self.top = 0;
         self.at = group;
         self.cursor = self.first_stop();
     }
@@ -275,6 +344,18 @@ impl Review {
 
     fn first_stop(&self) -> usize {
         (0..self.tree().len()).find(|&i| self.stops(i)).unwrap_or(0)
+    }
+
+    /// The next row the cursor stops on, going down or up, staying put at
+    /// the last or first such row instead of wrapping.
+    fn step_to_end(&self, down: bool) -> usize {
+        let stops = |i: &usize| self.stops(*i);
+        let next = if down {
+            (self.cursor + 1..self.tree().len()).find(stops)
+        } else {
+            (0..self.cursor).rev().find(stops)
+        };
+        next.unwrap_or(self.cursor)
     }
 
     /// The next row the cursor stops on, moving by `delta` (1 down,
@@ -323,11 +404,28 @@ impl Review {
 
     /// First row of the window, which keeps the cursor on screen.
     fn top(&self) -> usize {
-        (self.cursor + 1).saturating_sub(self.visible())
+        self.top
+    }
+
+    /// Scroll only when the cursor would leave the window; scrolling up,
+    /// keep the headings just above the cursor in view.
+    fn follow(&mut self) {
+        if self.cursor < self.top {
+            self.top = self.cursor;
+            while self.top > 0
+                && !self.stops(self.top - 1)
+                && self.cursor - (self.top - 1) < self.visible()
+            {
+                self.top -= 1;
+            }
+        } else if self.cursor >= self.top + self.visible() {
+            self.top = self.cursor + 1 - self.visible();
+        }
     }
 
     /// Every entry on screen is seen; one shown whole needs no opening.
     fn mark_shown(&mut self) {
+        self.follow();
         let shown: Vec<(usize, bool)> = self
             .window()
             .map(|(_, (node, depth))| (node, self.entry_text(node, depth).1))
@@ -588,18 +686,6 @@ mod tests {
         assert!(header.starts_with("tx "), "{header}");
         assert_eq!(rows, vec!["fee: 171485", "outputs", "  _0", "  _1"]);
         assert_eq!(sel, 0);
-    }
-
-    #[test]
-    fn only_entries_you_can_go_into_are_marked() {
-        let r = review(tx());
-        match r.view() {
-            View::Overview { rows, .. } => {
-                let marks: Vec<_> = rows.iter().map(|r| r.expandable).collect();
-                assert_eq!(marks, vec![false, false, true, true]);
-            }
-            v => panic!("expected a level, got {v:?}"),
-        }
     }
 
     #[test]
@@ -928,5 +1014,194 @@ mod tests {
     fn a_blank_transaction_shows_something_to_read() {
         let r = review(json_to_lines(&serde_json::json!(" ")));
         assert_eq!(level(&r).1, vec![r#"" ""#]);
+    }
+
+    fn rows_of(r: &Review) -> Vec<Row> {
+        match r.view() {
+            View::Overview { rows, .. } => rows,
+            v => panic!("expected a level, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn holding_stops_at_the_ends_and_a_fresh_press_wraps() {
+        let mut r = review(tx());
+        for _ in 0..10 {
+            r.handle(ButtonEvent::DownHeld);
+        }
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "  _1", "held: stops on the last row");
+        r.handle(ButtonEvent::Down);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "fee: 171485", "a fresh press wraps");
+        r.handle(ButtonEvent::UpHeld);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "fee: 171485", "held: stops on the first row");
+        r.handle(ButtonEvent::Up);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "  _1", "a fresh press wraps");
+    }
+
+    #[test]
+    fn held_up_and_down_turn_pages_like_presses() {
+        let value = "x".repeat(500);
+        let mut r = review(vec![DisplayLine {
+            indent: 1,
+            key: Some("d".into()),
+            value,
+        }]);
+        r.handle(ButtonEvent::Open);
+        let first = detail(&r).0;
+        r.handle(ButtonEvent::DownHeld);
+        assert_ne!(detail(&r).0, first);
+        r.handle(ButtonEvent::UpHeld);
+        assert_eq!(detail(&r).0, first);
+    }
+
+    #[test]
+    fn moving_up_from_the_bottom_moves_the_cursor_not_the_list() {
+        let lines: Vec<_> = (0..30)
+            .map(|i| DisplayLine {
+                indent: 1,
+                key: Some("k".into()),
+                value: i.to_string(),
+            })
+            .collect();
+        let mut r = review(lines);
+        r.handle(ButtonEvent::Up); // wraps to the last row
+        let (_, before, sel) = level(&r);
+        assert_eq!(before[sel], "k: 29");
+        r.handle(ButtonEvent::Up);
+        r.handle(ButtonEvent::Up);
+        let (_, after, sel) = level(&r);
+        assert_eq!(
+            after, before,
+            "the window stays while the cursor is inside it"
+        );
+        assert_eq!(after[sel], "k: 27");
+    }
+
+    #[test]
+    fn scrolling_up_into_a_group_shows_its_heading() {
+        let lines = json_to_lines(&serde_json::json!({
+            "a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6", "g": "7", "h": "8",
+            "list": ["x", "y"],
+            "z": "9"
+        }));
+        let mut r = review(lines);
+        r.handle(ButtonEvent::Up); // wraps to the bottom: z
+        for _ in 0..2 {
+            r.handle(ButtonEvent::Up); // _1, then _0 of list
+        }
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "  _0: x");
+        assert_eq!(rows[sel - 1], "list", "the heading above stays in view");
+    }
+
+    #[test]
+    fn five_on_a_branch_accepts_it_at_once() {
+        let mut r = review(tx());
+        let before = r.remaining();
+        select(&mut r, "  _1");
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        assert!(matches!(r.view(), View::Overview { .. }), "no question");
+        assert_eq!(
+            r.remaining(),
+            before - 2,
+            "the two fields of _1 no longer block"
+        );
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text == "  _1")
+            .unwrap();
+        assert!(row.waived && !row.pending, "{row:?}");
+    }
+
+    #[test]
+    fn five_again_undoes_it() {
+        let mut r = review(tx());
+        let before = r.remaining();
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Confirm);
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.remaining(), before);
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text == "  _1")
+            .unwrap();
+        assert!(!row.waived && row.pending, "{row:?}");
+    }
+
+    #[test]
+    fn approval_after_accepting_says_how_many_branches_were_accepted() {
+        let mut r = review(tx());
+        for branch in ["  _0", "  _1"] {
+            select(&mut r, branch);
+            r.handle(ButtonEvent::Confirm);
+        }
+        assert_eq!(r.remaining(), 0);
+        let (header, _, _) = level(&r);
+        assert!(header.ends_with("OK? 2 waived"), "{header}");
+        select(&mut r, "fee");
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
+    }
+
+    #[test]
+    fn five_on_a_cut_value_accepts_it_and_again_undoes_it() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open); // into output _1: its address is cut
+        r.handle(ButtonEvent::Back);
+        select(&mut r, "  _0");
+        r.handle(ButtonEvent::Open); // into output _0
+        let before = r.remaining();
+        select(&mut r, "address: addr_");
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(
+            r.remaining(),
+            before - 1,
+            "the cut address no longer blocks"
+        );
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text.starts_with("address"))
+            .unwrap();
+        assert!(row.waived && !row.pending, "{row:?}");
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.remaining(), before);
+    }
+
+    #[test]
+    fn five_on_a_value_already_shown_accepts_nothing() {
+        let mut r = review(tx());
+        select(&mut r, "fee");
+        let before = r.remaining();
+        assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
+        assert_eq!(r.remaining(), before);
+        assert!(!rows_of(&r)[0].waived);
+    }
+
+    #[test]
+    fn a_branch_already_read_is_not_accepted() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Open);
+        r.handle(ButtonEvent::Back);
+        let before = r.remaining();
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.remaining(), before);
+        let row = rows_of(&r)
+            .into_iter()
+            .find(|row| row.text == "  _1")
+            .unwrap();
+        assert!(!row.waived);
+    }
+
+    #[test]
+    fn six_still_rejects() {
+        let mut r = review(tx());
+        select(&mut r, "  _1");
+        r.handle(ButtonEvent::Confirm);
+        assert_eq!(r.handle(ButtonEvent::Reject), Outcome::Rejected);
     }
 }
