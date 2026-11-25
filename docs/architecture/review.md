@@ -81,7 +81,7 @@ validity_e…: 87654321
 | joystick press | — | — |
 
 In the desktop simulator the arrow keys stand in for the joystick,
-Enter for #5 and Esc for #6.
+Enter for #5 and Tab for #6.
 
 ## Modes
 

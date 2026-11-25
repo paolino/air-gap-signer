@@ -4,16 +4,26 @@
 //! In Sign mode #5 on a key adds that key's signature at once and #5
 //! again removes it: the toggle is the undo, there is no confirmation and
 //! no separate reject (a session finished with no signature signs
-//! nothing). Signatures stay in memory until Done.
+//! nothing). Signatures stay in memory until Done, and only while the
+//! review stays complete: undoing an accepted branch drops them.
 
 use crate::review::{ButtonEvent, Review, Row, View};
+use crate::spec::SignAlgorithm;
+
+/// A key the device holds.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Key {
+    pub slot: u8,
+    pub algorithm: SignAlgorithm,
+    /// A short label, e.g. `slot 0 ed25519 3fa2…`.
+    pub label: String,
+}
 
 /// Keys able to sign, and signing with them.
 pub trait Signer {
-    /// A short label per key, e.g. `slot 0 ed25519 3fa2…`.
-    fn keys(&self) -> Vec<String>;
-    /// Sign `message` with key `index`.
-    fn sign(&mut self, index: usize, message: &[u8]) -> Result<Vec<u8>, String>;
+    fn keys(&self) -> Vec<Key>;
+    /// Sign `message` with the key in `slot`.
+    fn sign(&mut self, slot: u8, message: &[u8]) -> Result<Vec<u8>, String>;
 }
 
 /// The screen the user is on; #6 moves to the next one.
@@ -28,9 +38,9 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Finish {
     Continue,
-    /// Done: the signatures added, as `(key index, signature)`; empty
-    /// when nothing was signed.
-    Done(Vec<(usize, Vec<u8>)>),
+    /// Done: the signatures added, as `(slot, signature)`; empty when
+    /// nothing was signed.
+    Done(Vec<(u8, Vec<u8>)>),
 }
 
 /// What Keys mode offers; not wired to the secure element yet.
@@ -46,17 +56,31 @@ pub struct Session {
     review: Review,
     mode: Mode,
     message: Vec<u8>,
-    keys: Vec<String>,
+    /// The keys the request allows, in the order shown.
+    keys: Vec<Key>,
     signatures: Vec<Option<Vec<u8>>>,
     /// Cursor in Sign mode (keys, then Done) and in Keys mode.
     cursor: usize,
+    /// First row shown in Sign and Keys mode.
+    top: usize,
     /// A one-line notice for the user, shown until the next press.
     notice: Option<String>,
 }
 
 impl Session {
-    pub fn new(review: Review, message: Vec<u8>, signer: &dyn Signer) -> Self {
-        let keys = signer.keys();
+    /// A session signing `message`, offering only the keys whose slot and
+    /// algorithm appear in `allowed` (the request's constraints).
+    pub fn new(
+        review: Review,
+        message: Vec<u8>,
+        allowed: &[(u8, SignAlgorithm)],
+        signer: &dyn Signer,
+    ) -> Self {
+        let keys: Vec<Key> = signer
+            .keys()
+            .into_iter()
+            .filter(|k| allowed.contains(&(k.slot, k.algorithm)))
+            .collect();
         Self {
             review,
             mode: Mode::Review,
@@ -64,6 +88,7 @@ impl Session {
             signatures: vec![None; keys.len()],
             keys,
             cursor: 0,
+            top: 0,
             notice: None,
         }
     }
@@ -81,6 +106,7 @@ impl Session {
                 Mode::Keys => Mode::Review,
             };
             self.cursor = 0;
+            self.top = 0;
             return Finish::Continue;
         }
         match self.mode {
@@ -88,6 +114,9 @@ impl Session {
             // signing is a choice made in Sign mode.
             Mode::Review => {
                 let _ = self.review.handle(event);
+                if self.review.remaining() > 0 {
+                    self.signatures.iter_mut().for_each(|s| *s = None);
+                }
             }
             Mode::Sign => return self.sign_mode(event, signer),
             Mode::Keys => match event {
@@ -106,11 +135,14 @@ impl Session {
             ButtonEvent::Up | ButtonEvent::UpHeld => self.step(entries, false),
             ButtonEvent::Down | ButtonEvent::DownHeld => self.step(entries, true),
             ButtonEvent::Confirm if self.cursor == self.keys.len() => {
+                if self.review.remaining() > 0 {
+                    return Finish::Done(Vec::new());
+                }
                 let done = self
-                    .signatures
+                    .keys
                     .iter()
-                    .enumerate()
-                    .filter_map(|(i, s)| s.clone().map(|s| (i, s)))
+                    .zip(&self.signatures)
+                    .filter_map(|(k, s)| s.clone().map(|s| (k.slot, s)))
                     .collect();
                 return Finish::Done(done);
             }
@@ -120,7 +152,7 @@ impl Session {
             ButtonEvent::Confirm if self.review.remaining() > 0 => {
                 self.notice = Some(format!("{} left to review", self.review.remaining()));
             }
-            ButtonEvent::Confirm => match signer.sign(self.cursor, &self.message) {
+            ButtonEvent::Confirm => match signer.sign(self.keys[self.cursor].slot, &self.message) {
                 Ok(sig) => self.signatures[self.cursor] = Some(sig),
                 Err(e) => self.notice = Some(e),
             },
@@ -135,14 +167,32 @@ impl Session {
         } else {
             (self.cursor + entries - 1) % entries
         };
+        // Keep the cursor on screen: the list scrolls only when needed.
+        let body = self.body_rows();
+        if self.cursor < self.top {
+            self.top = self.cursor;
+        } else if self.cursor >= self.top + body {
+            self.top = self.cursor + 1 - body;
+        }
+    }
+
+    /// Rows below the header.
+    fn body_rows(&self) -> usize {
+        self.review.screen_rows().saturating_sub(1).max(1)
     }
 
     pub fn view(&self) -> View {
-        let row = |i: usize, text: String, pending: bool| Row {
+        let row = |i: usize, text: String| Row {
             text,
             selected: i == self.cursor,
-            pending,
+            pending: false,
             waived: false,
+        };
+        let window = |rows: Vec<Row>| -> Vec<Row> {
+            rows.into_iter()
+                .skip(self.top)
+                .take(self.body_rows())
+                .collect()
         };
         let status = |name: &str| match &self.notice {
             Some(n) => format!("{name} {n}"),
@@ -161,24 +211,29 @@ impl Session {
                     .iter()
                     .enumerate()
                     .map(|(i, k)| match self.signatures[i] {
-                        Some(_) => row(i, format!("SIGNED {k}"), false),
-                        None => row(i, k.clone(), false),
+                        Some(_) => row(i, format!("SIGNED {}", k.label)),
+                        None => row(i, k.label.clone()),
                     })
                     .collect();
-                rows.push(row(self.keys.len(), "Done".into(), false));
+                rows.push(row(self.keys.len(), "Done".into()));
                 let header = match &self.notice {
                     Some(n) => format!("SIGN {n}"),
                     None => format!("SIGN {left}"),
                 };
-                View::Overview { header, rows }
+                View::Overview {
+                    header,
+                    rows: window(rows),
+                }
             }
             Mode::Keys => View::Overview {
                 header: status("KEYS"),
-                rows: KEY_ACTIONS
-                    .iter()
-                    .enumerate()
-                    .map(|(i, a)| row(i, a.to_string(), false))
-                    .collect(),
+                rows: window(
+                    KEY_ACTIONS
+                        .iter()
+                        .enumerate()
+                        .map(|(i, a)| row(i, a.to_string()))
+                        .collect(),
+                ),
             },
         }
     }
@@ -189,27 +244,43 @@ mod tests {
     use super::*;
     use crate::display::json_to_lines;
 
+    const ED: SignAlgorithm = SignAlgorithm::Ed25519;
+
     struct Fake {
-        signed: Vec<(usize, Vec<u8>)>,
+        keys: Vec<Key>,
+        signed: Vec<(u8, Vec<u8>)>,
     }
 
     impl Signer for Fake {
-        fn keys(&self) -> Vec<String> {
-            vec!["slot 0".into(), "slot 1".into()]
+        fn keys(&self) -> Vec<Key> {
+            self.keys.clone()
         }
-        fn sign(&mut self, index: usize, message: &[u8]) -> Result<Vec<u8>, String> {
-            self.signed.push((index, message.to_vec()));
-            Ok(vec![index as u8; 4])
+        fn sign(&mut self, slot: u8, message: &[u8]) -> Result<Vec<u8>, String> {
+            self.signed.push((slot, message.to_vec()));
+            Ok(vec![slot; 4])
+        }
+    }
+
+    fn key(slot: u8, algorithm: SignAlgorithm) -> Key {
+        Key {
+            slot,
+            algorithm,
+            label: format!("slot {slot}"),
         }
     }
 
     fn fake() -> Fake {
-        Fake { signed: Vec::new() }
+        Fake {
+            keys: vec![key(0, ED), key(1, ED)],
+            signed: Vec::new(),
+        }
     }
+
+    const BOTH: [(u8, SignAlgorithm); 2] = [(0, ED), (1, ED)];
 
     fn session(json: serde_json::Value, signer: &Fake) -> Session {
         let review = Review::new(json_to_lines(&json), 21, 10).unwrap();
-        Session::new(review, b"body".to_vec(), signer)
+        Session::new(review, b"body".to_vec(), &BOTH, signer)
     }
 
     fn rows(s: &Session) -> (String, Vec<String>, usize) {
@@ -269,11 +340,31 @@ mod tests {
         to_sign(&mut s, &mut f);
         s.handle(ButtonEvent::Confirm, &mut f);
         assert!(f.signed.is_empty());
-        let (header, r, _) = rows(&s);
+        assert!(rows(&s).0.contains("left"), "{:?}", rows(&s));
+    }
+
+    #[test]
+    fn undoing_an_accepted_branch_drops_the_signatures() {
+        let mut f = fake();
+        let long = "x".repeat(100);
+        let mut s = session(serde_json::json!({"memo": long}), &f);
+        s.handle(ButtonEvent::Confirm, &mut f); // accept the cut memo unread
+        to_sign(&mut s, &mut f);
+        s.handle(ButtonEvent::Confirm, &mut f); // sign with slot 0
+        assert_eq!(f.signed.len(), 1);
+        while s.mode() != Mode::Review {
+            s.handle(ButtonEvent::Mode, &mut f);
+        }
+        s.handle(ButtonEvent::Confirm, &mut f); // undo the acceptance
+        to_sign(&mut s, &mut f);
         assert!(
-            r.iter().any(|t| t.contains("left to review")) || header.contains("left"),
-            "{header} {r:?}"
+            !rows(&s).1.iter().any(|r| r.starts_with("SIGNED")),
+            "{:?}",
+            rows(&s).1
         );
+        s.handle(ButtonEvent::Down, &mut f);
+        s.handle(ButtonEvent::Down, &mut f); // Done
+        assert_eq!(s.handle(ButtonEvent::Confirm, &mut f), Finish::Done(vec![]));
     }
 
     #[test]
@@ -303,6 +394,66 @@ mod tests {
     }
 
     #[test]
+    fn only_keys_the_request_allows_are_offered_and_signing_goes_by_slot() {
+        let mut f = Fake {
+            keys: vec![
+                key(0, SignAlgorithm::Secp256k1Ecdsa),
+                key(1, ED),
+                key(2, ED),
+            ],
+            signed: Vec::new(),
+        };
+        let review = Review::new(json_to_lines(&serde_json::json!({"fee": "1"})), 21, 10).unwrap();
+        let mut s = Session::new(review, b"body".to_vec(), &[(0, ED), (2, ED)], &f);
+        to_sign(&mut s, &mut f);
+        assert_eq!(
+            rows(&s).1,
+            vec!["slot 2", "Done"],
+            "slot 0 has the wrong algorithm, slot 1 is not asked for"
+        );
+        s.handle(ButtonEvent::Confirm, &mut f);
+        assert_eq!(f.signed, vec![(2, b"body".to_vec())]);
+    }
+
+    #[test]
+    fn the_sign_list_scrolls_to_keep_the_cursor_on_screen() {
+        let mut f = Fake {
+            keys: (0..12).map(|i| key(i, ED)).collect(),
+            signed: Vec::new(),
+        };
+        let allowed: Vec<_> = (0..12).map(|i| (i, ED)).collect();
+        let review = Review::new(json_to_lines(&serde_json::json!({"fee": "1"})), 21, 6).unwrap();
+        let mut s = Session::new(review, b"body".to_vec(), &allowed, &f);
+        to_sign(&mut s, &mut f);
+        for _ in 0..12 {
+            s.handle(ButtonEvent::Down, &mut f);
+            let (_, r, sel) = rows(&s);
+            assert!(r.len() <= 5, "fits under the header: {r:?}");
+            assert!(sel < r.len(), "cursor on screen: {r:?}");
+        }
+        let (_, r, sel) = rows(&s);
+        assert_eq!(r[sel], "Done");
+        s.handle(ButtonEvent::Confirm, &mut f);
+        assert!(f.signed.is_empty(), "#5 acted on the visible Done");
+    }
+
+    #[test]
+    fn with_no_key_sign_offers_only_done_and_says_why() {
+        let mut f = Fake {
+            keys: Vec::new(),
+            signed: Vec::new(),
+        };
+        let mut s = session(serde_json::json!({"fee": "1"}), &f);
+        s.handle(ButtonEvent::Mode, &mut f);
+        let (header, r, _) = rows(&s);
+        assert_eq!(
+            (header.as_str(), r),
+            ("SIGN no key", vec!["Done".to_string()])
+        );
+        assert_eq!(s.handle(ButtonEvent::Confirm, &mut f), Finish::Done(vec![]));
+    }
+
+    #[test]
     fn review_keeps_its_controls_inside_the_session() {
         let mut f = fake();
         let long = "x".repeat(100);
@@ -310,29 +461,6 @@ mod tests {
         s.handle(ButtonEvent::Confirm, &mut f); // accept the cut memo unread
         let (header, r, _) = rows(&s);
         assert!(header.ends_with(" 1 waived"), "{header} {r:?}");
-    }
-
-    #[test]
-    fn with_no_key_sign_offers_only_done_and_says_why() {
-        struct NoKey;
-        impl Signer for NoKey {
-            fn keys(&self) -> Vec<String> {
-                Vec::new()
-            }
-            fn sign(&mut self, _: usize, _: &[u8]) -> Result<Vec<u8>, String> {
-                unreachable!()
-            }
-        }
-        let review = Review::new(json_to_lines(&serde_json::json!({"fee": "1"})), 21, 10).unwrap();
-        let mut k = NoKey;
-        let mut s = Session::new(review, vec![], &k);
-        s.handle(ButtonEvent::Mode, &mut k);
-        let (header, r, _) = rows(&s);
-        assert_eq!(
-            (header.as_str(), r),
-            ("SIGN no key", vec!["Done".to_string()])
-        );
-        assert_eq!(s.handle(ButtonEvent::Confirm, &mut k), Finish::Done(vec![]));
     }
 
     #[test]

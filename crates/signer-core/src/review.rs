@@ -182,6 +182,11 @@ impl Review {
         Ok(review)
     }
 
+    /// Text rows on the screen, the header included.
+    pub fn screen_rows(&self) -> usize {
+        self.rows
+    }
+
     /// Entries never shown, plus entries still cut with `…`: all must be
     /// shown before Confirm counts.
     pub fn remaining(&self) -> usize {
