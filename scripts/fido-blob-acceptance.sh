@@ -16,7 +16,14 @@ work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 b64() { xxd -r -p | base64 -w0; }
 
 fail=0
+# This RP's resident credentials on the token (empty when none).
+ours() { fido2-token -L -k "$rp" "$dev" 2>&1 | grep -v NO_CREDENTIALS || true; }
+
 check() { if [ "$2" = "$3" ] && [ -n "$2" ]; then echo "PASS $1"; else echo "FAIL $1: $2 vs $3"; fail=1; fi; }
+
+echo "the token must start with no credential for $rp"
+before=$(ours)
+[ -z "$before" ] || { echo "FAIL: leftover credentials, delete them first:"; echo "$before"; exit 1; }
 
 echo "enrol a resident credential (signer)"
 id=$("$probe" enrol)
@@ -38,10 +45,9 @@ check "the signer reads what libfido2 wrote" "$got_data" "$(xxd -p -c999 "$work/
 echo "cleanup: delete the blob and the credential (libfido2)"
 fido2-token -D -b -n "$rp" -i "$idb" "$dev"
 fido2-token -D -i "$idb" "$dev"
-# Control: with the blob gone the signer must find nothing to restore.
+after=$(ours)
+check "no credential left behind" "none" "${after:-none}"
+# Control: with the credential gone the signer must find none.
 refused=$("$probe" blob-get 2>&1 || true)
-case "$refused" in
-  *"no backup"*|*"0x2e"*|*"no credential"*) echo "PASS control: nothing left to restore ($refused)";;
-  *) echo "FAIL control: $refused"; fail=1;;
-esac
+check "control: the signer finds no credential" "token said 0x2e" "$refused"
 exit $fail
