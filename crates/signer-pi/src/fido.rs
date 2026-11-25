@@ -3,8 +3,10 @@
 //! the secret of a salt. Pure Rust, so the signer stays one static
 //! binary (the usual crates need libudev).
 //!
-//! Touch only: no user verification, so the token's PIN is not needed;
-//! the secret is then the token's no-UV secret, the same every time.
+//! Every operation proves the token's PIN (a PIN/UV auth token with
+//! make-credential and get-assertion permissions for this RP), so the
+//! secret is the token's user-verified one: a token and a backup stick
+//! without the PIN open nothing.
 
 use ciborium::Value;
 use std::io::{Read, Write};
@@ -28,6 +30,10 @@ pub enum FidoError {
     Io(#[from] std::io::Error),
     #[error("token protocol: {0}")]
     Protocol(String),
+    #[error("wrong token PIN")]
+    WrongPin,
+    #[error("token PIN blocked: reset the token or power-cycle it")]
+    PinBlocked,
     #[error("token said {0:#04x}")]
     Status(u8),
 }
@@ -129,15 +135,19 @@ impl<D: Read + Write> Device<D> {
         }
         match data.split_first() {
             Some((0, rest)) => ciborium::from_reader(rest).map_err(|e| protocol(e.to_string())),
+            Some((0x31, _)) => Err(FidoError::WrongPin),
+            Some((0x32 | 0x34, _)) => Err(FidoError::PinBlocked),
             Some((status, _)) => Err(FidoError::Status(*status)),
             None => Err(protocol("empty reply")),
         }
     }
 
-    /// Create a credential with `hmac-secret` (needs a touch); its id.
-    pub fn enrol(&mut self) -> Result<Vec<u8>, FidoError> {
+    /// Create a credential with `hmac-secret` (needs the PIN and a
+    /// touch); its id.
+    pub fn enrol(&mut self, pin: &str) -> Result<Vec<u8>, FidoError> {
+        let (_, auth) = self.pin_token(pin, PERMIT_MAKE_CREDENTIAL)?;
         let request = map(vec![
-            (int(1), Value::Bytes(vec![0; 32])),
+            (int(1), Value::Bytes(CLIENT_DATA_HASH.to_vec())),
             (int(2), map(vec![(text("id"), text(RP_ID))])),
             (
                 int(3),
@@ -157,6 +167,8 @@ impl<D: Read + Write> Device<D> {
                 ])]),
             ),
             (int(6), map(vec![(text("hmac-secret"), Value::Bool(true))])),
+            (int(8), Value::Bytes(auth.authenticate(&CLIENT_DATA_HASH))),
+            (int(9), int(2)),
         ]);
         let reply = self.cbor(MAKE_CREDENTIAL, Some(request))?;
         let auth = bytes(field(&reply, 2)?)?;
@@ -173,14 +185,15 @@ impl<D: Read + Write> Device<D> {
             .to_vec())
     }
 
-    /// The token's secret for `salt` under credential `id` (needs a touch).
-    pub fn secret(&mut self, id: &[u8], salt: &[u8; 32]) -> Result<[u8; 32], FidoError> {
-        let shared = self.key_agreement()?;
+    /// The token's user-verified secret for `salt` under credential
+    /// `id` (needs the PIN and a touch).
+    pub fn secret(&mut self, id: &[u8], salt: &[u8; 32], pin: &str) -> Result<[u8; 32], FidoError> {
+        let (shared, auth) = self.pin_token(pin, PERMIT_GET_ASSERTION)?;
         let salt_enc = shared.encrypt(salt);
         let salt_auth = shared.authenticate(&salt_enc);
         let request = map(vec![
             (int(1), text(RP_ID)),
-            (int(2), Value::Bytes(vec![0; 32])),
+            (int(2), Value::Bytes(CLIENT_DATA_HASH.to_vec())),
             (
                 int(3),
                 Value::Array(vec![map(vec![
@@ -200,10 +213,15 @@ impl<D: Read + Write> Device<D> {
                     ]),
                 )]),
             ),
+            (int(6), Value::Bytes(auth.authenticate(&CLIENT_DATA_HASH))),
+            (int(7), int(2)),
         ]);
         let reply = self.cbor(GET_ASSERTION, Some(request))?;
         let auth = bytes(field(&reply, 2)?)?;
-        if auth.len() < 37 || auth[32] & 0x80 == 0 {
+        if auth.len() < 37 || auth[32] & 0x04 == 0 {
+            return Err(protocol("the token did not verify the PIN"));
+        }
+        if auth[32] & 0x80 == 0 {
             return Err(protocol("no extension output"));
         }
         let ext: Value = ciborium::from_reader(&auth[37..]).map_err(|e| protocol(e.to_string()))?;
@@ -218,6 +236,38 @@ impl<D: Read + Write> Device<D> {
             .map_err(|_| protocol("hmac-secret is not 32 bytes"))
     }
 
+    /// Tries left before the token blocks its PIN.
+    pub fn pin_retries(&mut self) -> Result<u8, FidoError> {
+        let reply = self.cbor(
+            CLIENT_PIN,
+            Some(map(vec![(int(1), int(2)), (int(2), int(1))])),
+        )?;
+        field(&reply, 3)?
+            .as_integer()
+            .and_then(|n| u8::try_from(n).ok())
+            .ok_or_else(|| protocol("bad retries"))
+    }
+
+    /// A PIN/UV auth token for `permissions` on this RP, proving `pin`;
+    /// with the shared secret it was agreed under.
+    fn pin_token(&mut self, pin: &str, permissions: u8) -> Result<(Shared, PinToken), FidoError> {
+        use sha2::{Digest, Sha256};
+        let shared = self.key_agreement()?;
+        let pin_hash = Sha256::digest(pin.as_bytes());
+        let request = map(vec![
+            (int(1), int(2)),
+            (int(2), int(9)),
+            (int(3), shared.platform_key()),
+            (int(6), Value::Bytes(shared.encrypt(&pin_hash[..16]))),
+            (int(9), int(permissions.into())),
+            (int(10), text(RP_ID)),
+        ]);
+        let reply = self.cbor(CLIENT_PIN, Some(request))?;
+        let token = shared.decrypt(bytes(field(&reply, 2)?)?)?;
+        let token: [u8; 32] = token.try_into().map_err(|_| protocol("bad PIN token"))?;
+        Ok((shared, PinToken(token)))
+    }
+
     /// PIN/UV protocol 2 key agreement.
     fn key_agreement(&mut self) -> Result<Shared, FidoError> {
         let reply = self.cbor(
@@ -225,6 +275,24 @@ impl<D: Read + Write> Device<D> {
             Some(map(vec![(int(1), int(2)), (int(2), int(2))])),
         )?;
         Shared::agree(field(&reply, 1)?)
+    }
+}
+
+const PERMIT_MAKE_CREDENTIAL: u8 = 0x01;
+const PERMIT_GET_ASSERTION: u8 = 0x02;
+/// No client data: the assertion's signature is not used, only its
+/// hmac-secret output.
+const CLIENT_DATA_HASH: [u8; 32] = [0; 32];
+
+/// A PIN/UV auth token (protocol 2): authenticates requests.
+struct PinToken([u8; 32]);
+
+impl PinToken {
+    fn authenticate(&self, msg: &[u8]) -> Vec<u8> {
+        use hmac::Mac;
+        let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(&self.0).unwrap();
+        mac.update(msg);
+        mac.finalize().into_bytes().to_vec()
     }
 }
 

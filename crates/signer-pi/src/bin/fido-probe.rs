@@ -1,5 +1,6 @@
 //! Talk to the FIDO2 token from the command line (each step needs a
-//! touch), for acceptance against libfido2 (`scripts/fido-acceptance.sh`):
+//! touch), for acceptance against libfido2 (`scripts/fido-acceptance.sh`).
+//! The token's PIN comes from the `FIDO_PIN` environment variable.
 //!
 //! - `fido-probe enrol` prints a new credential id (hex);
 //! - `fido-probe secret <credential hex> <salt hex>` prints the token's
@@ -9,6 +10,7 @@
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let run = || -> Result<String, Box<dyn std::error::Error>> {
+        let pin = std::env::var("FIDO_PIN").map_err(|_| "set FIDO_PIN")?;
         let mut token = signer_pi::fido::open()?;
         match args
             .iter()
@@ -16,14 +18,17 @@ fn main() {
             .collect::<Vec<_>>()
             .as_slice()
         {
-            ["enrol"] => Ok(hex::encode(token.enrol()?)),
+            ["enrol"] => Ok(hex::encode(token.enrol(&pin)?)),
+            ["retries"] => Ok(token.pin_retries()?.to_string()),
             ["secret", id, salt] => {
                 let salt: [u8; 32] = hex::decode(salt)?
                     .try_into()
                     .map_err(|_| "salt must be 32 bytes")?;
-                Ok(hex::encode(token.secret(&hex::decode(id)?, &salt)?))
+                Ok(hex::encode(token.secret(&hex::decode(id)?, &salt, &pin)?))
             }
-            _ => Err("usage: fido-probe enrol | secret <credential hex> <salt hex>".into()),
+            _ => {
+                Err("usage: fido-probe enrol | retries | secret <credential hex> <salt hex>".into())
+            }
         }
     };
     match run() {
