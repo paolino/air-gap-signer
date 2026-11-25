@@ -212,6 +212,7 @@ const FG: u32 = 0x00FF_FFFF; // white
 const BG: u32 = 0x0010_1010; // near-black
 const ACCENT: u32 = 0x00FA_BE28; // amber, for headers
 const PENDING: u32 = 0x00FF_6E64; // light red, rows still to see
+const WAIVED: u32 = 0x0078_7878; // grey, rows accepted without reading
 const SELECTED_BG: u32 = 0x0030_3A60; // the review cursor
 
 pub struct SimDisplay {
@@ -361,7 +362,11 @@ impl signer_hal::Display for SimDisplay {
                 for (i, row) in rows.iter().enumerate() {
                     let bg = if row.selected { SELECTED_BG } else { BG };
                     let padded = format!("{:<COLS$}", row.text);
-                    let fg = if row.pending { PENDING } else { FG };
+                    let fg = match (row.pending, row.waived) {
+                        (true, _) => PENDING,
+                        (false, true) => WAIVED,
+                        (false, false) => FG,
+                    };
                     self.draw_text_in(&padded, 0, i + 1, fg, bg, row.expandable);
                 }
             }

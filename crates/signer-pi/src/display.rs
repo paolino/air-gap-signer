@@ -72,6 +72,8 @@ pub struct FbDisplay {
     pending: Rgb,
     /// The cursor stripe.
     cursor: Rgb,
+    /// Rows accepted without being read.
+    waived: Rgb,
 }
 
 impl FbDisplay {
@@ -119,6 +121,7 @@ impl FbDisplay {
             accent: Rgb(250, 190, 40),
             pending: Rgb(255, 110, 100),
             cursor: Rgb(250, 190, 40),
+            waived: Rgb(120, 120, 120),
         }
     }
 
@@ -210,7 +213,11 @@ impl signer_hal::Display for FbDisplay {
                     } else {
                         &self.font
                     };
-                    let colour = if row.pending { self.pending } else { self.fg };
+                    let colour = match (row.pending, row.waived) {
+                        (true, _) => self.pending,
+                        (false, true) => self.waived,
+                        (false, false) => self.fg,
+                    };
                     self.frame.draw_text(font, &row.text, 0, y, colour, self.bg);
                     if row.selected {
                         // The cursor: a stripe in the right margin, past the
@@ -306,6 +313,7 @@ mod tests {
             selected,
             expandable: false,
             pending: false,
+            waived: false,
         };
         let view = View::Overview {
             header: "h".into(),
@@ -365,6 +373,7 @@ mod tests {
             selected: false,
             expandable: false,
             pending,
+            waived: false,
         };
         let view = View::Overview {
             header: "h".into(),
