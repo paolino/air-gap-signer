@@ -3,6 +3,8 @@
 
 pub mod buttons;
 pub mod display;
+#[cfg(target_os = "linux")]
+pub mod fido;
 pub mod flow;
 pub mod frame;
 pub mod layout;
