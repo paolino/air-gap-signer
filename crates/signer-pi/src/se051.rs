@@ -72,6 +72,13 @@ impl Se051 {
         Ok(format!("{v:?}"))
     }
 
+    /// The driver itself, for commands not wrapped here.
+    pub fn chip(
+        &mut self,
+    ) -> &mut Se05X<se05x::embedded_hal::Hal10<Bus>, se05x::embedded_hal::Hal10<Delay>> {
+        &mut self.chip
+    }
+
     /// `n` random bytes from the chip's generator.
     pub fn random(&mut self, n: u16) -> Result<Vec<u8>, HalError> {
         let buf = &mut [0u8; 512];
