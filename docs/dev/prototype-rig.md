@@ -128,8 +128,9 @@ $ /usr/sbin/i2cdetect -y 1
 ```
 
 A device acknowledging at `0x48` is consistent with the SE051 at its
-default address; it does not identify the chip. Reading the chip's
-identity needs the secure element driver. If the grid is empty, check
+default address; it does not identify the chip. NXP's Plug & Trust
+middleware includes a `get info` example that reads the variant; the
+signer's own driver will do the same. If the grid is empty, check
 that the blue and yellow wires are on mikroBUS pins 11 and 12.
 
 The Pi 3B needs a 5.1 V / 2.5 A supply. `vcgencmd get_throttled` reports
@@ -174,18 +175,20 @@ What the sources establish:
   §4.6.2, written for the SE050; the SE051 equivalent, AN12543, needs an
   NXP login). NXP publishes the factory SCP keys
   ([AN12973](https://www.nxp.com/docs/en/application-note/AN12973.pdf)),
-  so this protects nothing until they are replaced with keys of our own.
-  It does not turn the radio off.
+  so this protects nothing until they, and the recovery keys, are
+  replaced with keys of our own. Whether the requirement holds for
+  commands arriving over the contactless interface is not confirmed. It
+  does not turn the radio off.
 - [AN12973](https://www.nxp.com/docs/en/application-note/AN12973.pdf)
-  lists the contactless interface and Ed25519 only for the SE051C2. The
-  SE051A2 has neither, so it is not a substitute: the signer needs
-  Ed25519.
+  lists the contactless interface and Ed25519 for the SE051C2 and
+  SE051H2, not for the SE051A2. The A2 is therefore not a substitute: the
+  signer needs Ed25519.
 
 | Option | Effect | Status |
 |---|---|---|
 | SW1 left at OFF | opens the LA side of the antenna loop | bench precaution; keep it |
-| ground LA and LB, remove the coil | follows NXP's guidance for an unused interface | candidate for a production build, needs an RF test with a reader to confirm |
-| require platform SCP03 with our own keys | applet commands over any interface need those keys | belongs to the secure element driver work |
+| ground LA and LB, remove the coil | follows NXP's guidance for an unused interface | candidate for a production build; confirm with a reader held over the chip while it powers up, since the chip only selects contactless at startup |
+| require platform SCP03 with our own and recovery keys replaced | applet commands need those keys; contactless coverage unconfirmed | belongs to the secure element driver work |
 | switch SW1 to ON | the chip can answer a nearby reader | rejected |
 
 ## Differences from the target
@@ -201,6 +204,7 @@ The secure element driver is intended to serve both the SE050 and the
 SE051. They share NXP's Plug & Trust middleware, but
 [NXP's migration guide](https://www.nxp.com/docs/en/application-note/AN13014.pdf)
 lists differences in I2C clock stretching, APDUs and object policies, so
-the driver's PIN, key and signing operations must be tested on each part.
+the driver's PIN, key and signing operations must be tested on each part
+and on each applet version it claims to support.
 Which curves a given part supports depends on its variant; check the part
 number before relying on Ed25519.
