@@ -2,10 +2,12 @@
 
 ## Who this is for
 
-A developer who wants to run the signer on real hardware before the
-production board exists. With this rig on the bench they can see the
-secure element answer on I2C, draw on the screen and read every button —
-the three things the Raspberry Pi HAL has to drive.
+A developer who wants to bring up the signer's peripherals on real
+hardware before the production board exists. With this rig on the bench
+they can see the secure element respond on I2C, draw on the screen and
+read every control — the three peripherals the Raspberry Pi HAL has to
+drive. The HAL itself (`signer-pi`) is not written yet; everything below
+is exercised from the Linux command line.
 
 The rig is built from off-the-shelf boards. It is not the production
 device: it differs from the target in the ways listed under
@@ -15,11 +17,14 @@ device: it differs from the target in the ways listed under
 
 | Part | What it provides |
 |---|---|
-| Raspberry Pi 3 Model B V1.2 | 64-bit host (BCM2837), runs the same `aarch64` binaries as a Pi 4 or Zero 2W |
-| [MikroE SE051 Plug&Trust Click](https://www.mikroe.com/se051-plugtrust-click) | NXP SE051C2 secure element on I2C, address `0x48` |
+| Raspberry Pi 3 Model B V1.2 | 64-bit host (BCM2837); with a 64-bit OS it runs the same `aarch64` binaries as a Pi 4 or Zero 2W |
+| [MikroE SE051 Plug&Trust Click](https://www.mikroe.com/se051-plugtrust-click) | NXP SE051C2 secure element on I2C, address `0x48` (NXP's default) |
 | [Adafruit 1.3" TFT Bonnet](https://www.adafruit.com/product/4506) | 240×240 ST7789 display on SPI, five-way joystick, two buttons, STEMMA QT I2C port |
-| STEMMA QT to female jumper cable | carries 3V3, GND, SDA and SCL from the bonnet to the Click |
+| [STEMMA QT to female jumper cable](https://www.adafruit.com/product/4397) | carries 3V3, GND, SDA and SCL from the bonnet to the Click |
 | microSD card | boot medium |
+
+Tested with Raspberry Pi OS Lite 64-bit (Debian 13 "trixie", image of
+2026-10-06), kernel `6.18.50+rpt-rpi-v8`.
 
 ## Wiring
 
@@ -44,21 +49,28 @@ flowchart LR
         Ant["NFC antenna"]
     end
     SPI0 -- "pixels; DC on GPIO 25, backlight on GPIO 26" --> LCD
-    Keys -- "active low, internal pull-ups" --> GPIO
+    Keys -- "active low" --> GPIO
     I2C1 -- "through the header" --> QT
     QT -- "red 3V3, black GND, blue SDA, yellow SCL" --> SE
     Ant -. "slide switch SW1, keep OFF" .- SE
 ```
 
-The cable colours follow the STEMMA QT convention. On the Click, SDA and
-SCL are on the lower mikroBUS row, 3V3 on the upper row; GND is on both.
-Leave RST, EN and every NC pin unconnected.
+| Cable wire | Click mikroBUS pin |
+|---|---|
+| blue | SDA, pin 11 |
+| yellow | SCL, pin 12 |
+| red | 3V3, pin 7 |
+| black | GND, pin 8 or 9 |
+
+The colours follow the STEMMA QT convention. Leave RST, EN and every NC
+pin unconnected; with EN unwired, the Click's enable switch SW2 stays in
+its default ON position.
 
 ## Controls
 
 Every control pulls its line low when pressed. The pins were read from
 the rig by watching edges while each control was pressed in turn; they
-match Adafruit's published pinout.
+match [Adafruit's published pinout](https://learn.adafruit.com/adafruit-1-3-color-tft-bonnet-for-raspberry-pi/pinouts).
 
 | Control | GPIO |
 |---|---|
@@ -70,25 +82,42 @@ match Adafruit's published pinout.
 | button #5 | 5 |
 | button #6 | 6 |
 
-The lines need the internal pull-up enabled (`gpiod` bias `pull-up`).
+Buttons #5 and #6 have 10 kΩ pull-ups on the bonnet; the joystick lines
+need the Pi's internal pull-up (`gpiod` bias `pull-up`). Requesting it on
+all seven is harmless. To watch the edges:
+
+```console
+$ gpiomon -c gpiochip0 -b pull-up -e falling --format "%o" 4 5 6 17 22 23 27
+17
+22
+```
 
 ## Display
 
-The Raspberry Pi kernel ships an overlay for this panel. One line in
-`config.txt` creates a 240×240, 16-bit RGB565 framebuffer:
+The Raspberry Pi kernel ships an overlay for this panel. Add one line to
+`/boot/firmware/config.txt` and reboot:
 
 ```ini
 dtoverlay=minipitft13,rotate=0
 ```
 
 The driver takes GPIO 25 (data/command) and GPIO 26 (backlight); neither
-collides with the controls. The framebuffer is `/dev/fb1`: writing
-240×240 little-endian RGB565 pixels to it draws a frame.
+collides with the controls. It registers a 240×240, 16-bit RGB565
+framebuffer. Linux numbers framebuffers in registration order, so find it
+by name rather than assuming an index:
+
+```console
+$ grep -l fb_st7789v /sys/class/graphics/fb*/name
+/sys/class/graphics/fb1/name
+```
+
+On the tested image it is `/dev/fb1`. Writing 240×240 little-endian
+RGB565 pixels to it draws a frame; three horizontal bands of red, green
+and blue appeared in that order as the first visible check.
 
 ## Bring-up check
 
-On Raspberry Pi OS with I2C and SPI enabled
-(`dtparam=i2c_arm=on`, `dtparam=spi=on`):
+With I2C and SPI enabled (`dtparam=i2c_arm=on`, `dtparam=spi=on`):
 
 ```console
 $ /usr/sbin/i2cdetect -y 1
@@ -96,12 +125,12 @@ $ /usr/sbin/i2cdetect -y 1
 ...
 40: -- -- -- -- -- -- -- -- 48 -- -- -- -- -- -- --
 ...
-$ cat /sys/class/graphics/fb1/name
-fb_st7789v
 ```
 
-`48` is the secure element. If the grid is empty, check that SDA and SCL
-are on the lower Click row and not on its NC pins.
+A device acknowledging at `0x48` is consistent with the SE051 at its
+default address; it does not identify the chip. Reading the chip's
+identity needs the secure element driver. If the grid is empty, check
+that the blue and yellow wires are on mikroBUS pins 11 and 12.
 
 The Pi 3B needs a 5.1 V / 2.5 A supply. `vcgencmd get_throttled` reports
 under-voltage: bit 0 set means it is low now, bit 16 means it dipped since
@@ -122,43 +151,56 @@ flowchart LR
 
 What the sources establish:
 
-- The Click has a slide switch, **ANTENNA (SW1)**: left is OFF, the
-  default; right is ON
+- The Click has a slide switch, **ANTENNA (SW1)**: left is OFF, which is
+  the factory default; right is ON
   ([product page](https://www.mikroe.com/se051-plugtrust-click)).
 - In the
-  [v100 schematic](https://cdn.sparkfun.com/assets/6/a/d/1/c/Schematic-21298-MIKROE_SE051_Plug_Trust_Click.PDF)
+  [schematic](https://download.mikroe.com/documents/add-on-boards/click/se051-plugtrust-click/SE051%20Plug%26Trust_click_v100b_Schematic.PDF)
   SW1 breaks only the LA side of the coil; LB stays wired.
+- The [SE051 datasheet](https://www.nxp.com/docs/en/data-sheet/SE051.pdf)
+  says the chip selects one interface at startup, checking for an RF
+  field before I2C, and that the antenna pins of an unused contactless
+  interface should be grounded. Whether a reader can reach the chip
+  therefore depends on what is present at power-up, not only on the
+  switch.
 - NXP's public documents describe no setting that disables the
-  contactless interface on the chip. The SE051 datasheet says a personalisation applet configures
-  "communication parameter settings of I2C, ISO14443 and ISO7816
-  interface"; its guide (AN13015) needs an NXP login and has not been
-  read.
-- The SE051A2 variant has no contactless interface at all
-  ([AN12973](https://www.nxp.com/docs/en/application-note/AN12973.pdf)).
-- Requiring platform SCP03 makes the applet refuse any command without the
-  SCP keys, over either interface
+  contactless interface. The datasheet says a personalisation applet
+  configures "communication parameter settings of I2C, ISO14443 and
+  ISO7816 interface"; its guide (AN13015) needs an NXP login and has not
+  been read.
+- Requiring platform SCP03 makes the IoT applet refuse applet commands
+  sent without the SCP keys
   ([AN12413](https://www.nxp.com/docs/en/application-note/AN12413.pdf),
-  §4.6.2). It does not turn the radio off.
+  §4.6.2, written for the SE050; the SE051 equivalent, AN12543, needs an
+  NXP login). NXP publishes the factory SCP keys
+  ([AN12973](https://www.nxp.com/docs/en/application-note/AN12973.pdf)),
+  so this protects nothing until they are replaced with keys of our own.
+  It does not turn the radio off.
+- [AN12973](https://www.nxp.com/docs/en/application-note/AN12973.pdf)
+  lists the contactless interface and Ed25519 only for the SE051C2. The
+  SE051A2 has neither, so it is not a substitute: the signer needs
+  Ed25519.
 
 | Option | Effect | Status |
 |---|---|---|
-| SW1 to OFF | opens the antenna loop | do this on the rig |
-| remove SW1 or cut the LA-ANT trace | permanent open loop | candidate for a production build |
-| SE051A2 instead of SE051C2 | no contactless interface in silicon | candidate for a production build |
-| require platform SCP03 | commands over any interface need the SCP keys | belongs to the secure element driver work |
-| leave as shipped | the chip answers a nearby reader | rejected |
+| SW1 left at OFF | opens the LA side of the antenna loop | bench precaution; keep it |
+| ground LA and LB, remove the coil | follows NXP's guidance for an unused interface | candidate for a production build, needs an RF test with a reader to confirm |
+| require platform SCP03 with our own keys | applet commands over any interface need those keys | belongs to the secure element driver work |
+| switch SW1 to ON | the chip can answer a nearby reader | rejected |
 
 ## Differences from the target
 
 | Aspect | Target in these docs | This rig |
 |---|---|---|
 | Board | Pi 4 or Zero 2W | Pi 3B |
-| Secure element | SE050 on the custom breakout | SE051C2 on a MikroE Click, with NFC antenna |
+| Secure element | SE050 on the custom breakout ([Secure Element](../architecture/secure-element.md)) | SE051C2 on a MikroE Click, with NFC antenna |
 | Display and buttons | unspecified | 1.3" ST7789 bonnet, joystick, two buttons |
 | OS | Buildroot, read-only, no network | Raspberry Pi OS with Wi-Fi, for bring-up only |
 
-The SE051 is driven through the same NXP Plug & Trust middleware and
-IoT applet commands as the SE050, so the planned I2C driver is expected to
-serve both. Which curves a given SE051 part supports depends
-on its variant and should be checked against the part number before the
-driver relies on Ed25519.
+The secure element driver is intended to serve both the SE050 and the
+SE051. They share NXP's Plug & Trust middleware, but
+[NXP's migration guide](https://www.nxp.com/docs/en/application-note/AN13014.pdf)
+lists differences in I2C clock stretching, APDUs and object policies, so
+the driver's PIN, key and signing operations must be tested on each part.
+Which curves a given part supports depends on its variant; check the part
+number before relying on Ed25519.

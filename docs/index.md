@@ -28,7 +28,7 @@ sequenceDiagram
   run WASM, render JSON, and sign bytes.
 - **Air-gapped** — no networking hardware enabled. No WiFi, no Bluetooth,
   no Ethernet. Only USB mass storage for data transfer.
-- **Secure element** — private keys live in an ATECC608B chip connected via
+- **Secure element** — private keys live in an NXP SE050 chip connected via
   I2C. The Pi never sees raw key material. The chip enforces PIN retry limits
   in hardware (lockout after N failures), so a stolen SD card is worthless.
 - **Sandboxed interpreters** — WASM modules run with zero host imports,
