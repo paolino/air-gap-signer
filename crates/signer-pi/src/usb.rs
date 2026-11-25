@@ -78,84 +78,6 @@ pub fn read_stick_files(dir: &Path) -> Result<UsbContents, HalError> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::os::unix::fs::symlink;
-
-    /// A fake `/sys/block`: each disk is a symlink to a device directory,
-    /// as the kernel lays it out.
-    fn sys_block(disks: &[(&str, &str, &[&str])]) -> tempfile::TempDir {
-        let root = tempfile::tempdir().unwrap();
-        let block = root.path().join("block");
-        fs::create_dir(&block).unwrap();
-        for (name, bus_path, partitions) in disks {
-            let dev = root.path().join("devices").join(bus_path).join(name);
-            fs::create_dir_all(&dev).unwrap();
-            for p in *partitions {
-                fs::create_dir(dev.join(p)).unwrap();
-                fs::write(dev.join(p).join("partition"), "1\n").unwrap();
-            }
-            symlink(&dev, block.join(name)).unwrap();
-        }
-        root
-    }
-
-    #[test]
-    fn finds_the_first_partition_of_a_usb_disk() {
-        let root = sys_block(&[
-            ("mmcblk0", "platform/mmc", &["mmcblk0p1"]),
-            ("sda", "platform/usb1/1-1/host0", &["sda1", "sda2"]),
-        ]);
-        assert_eq!(find_stick(&root.path().join("block")), Some("sda1".into()));
-    }
-
-    #[test]
-    fn uses_the_whole_disk_when_it_has_no_partitions() {
-        let root = sys_block(&[("sdb", "platform/usb1/1-2/host1", &[])]);
-        assert_eq!(find_stick(&root.path().join("block")), Some("sdb".into()));
-    }
-
-    #[test]
-    fn ignores_disks_that_are_not_on_usb() {
-        let root = sys_block(&[
-            ("mmcblk0", "platform/mmc", &["mmcblk0p1"]),
-            ("loop0", "virtual", &[]),
-        ]);
-        assert_eq!(find_stick(&root.path().join("block")), None);
-    }
-
-    #[test]
-    fn refuses_a_file_over_its_limit() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = dir.path().join("payload.bin");
-        fs::write(&f, vec![0u8; 11]).unwrap();
-        assert_eq!(read_limited(&f, 11).unwrap().len(), 11);
-        assert!(read_limited(&f, 10).is_err());
-    }
-
-    #[test]
-    fn reads_the_three_files_and_names_a_missing_one() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("payload.bin"), b"p").unwrap();
-        fs::write(dir.path().join("interpreter.wasm"), b"w").unwrap();
-        let err = read_stick_files(dir.path())
-            .err()
-            .expect("sign.cbor is missing");
-        assert!(
-            err.to_string().contains("the stick has no sign.cbor"),
-            "{err}"
-        );
-        fs::write(dir.path().join("sign.cbor"), b"s").unwrap();
-        let c = read_stick_files(dir.path()).unwrap();
-        assert_eq!(
-            (c.payload, c.interpreter_wasm, c.signing_spec_cbor),
-            (b"p".to_vec(), b"w".to_vec(), b"s".to_vec())
-        );
-    }
-}
-
 /// The stick on the Pi.
 pub struct PiUsb {
     sys_block: PathBuf,
@@ -257,5 +179,83 @@ impl UsbMount for PiUsb {
 
     fn unmount(&mut self) -> Result<(), HalError> {
         self.run(Command::new("umount").arg(&self.mount_point))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    /// A fake `/sys/block`: each disk is a symlink to a device directory,
+    /// as the kernel lays it out.
+    fn sys_block(disks: &[(&str, &str, &[&str])]) -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let block = root.path().join("block");
+        fs::create_dir(&block).unwrap();
+        for (name, bus_path, partitions) in disks {
+            let dev = root.path().join("devices").join(bus_path).join(name);
+            fs::create_dir_all(&dev).unwrap();
+            for p in *partitions {
+                fs::create_dir(dev.join(p)).unwrap();
+                fs::write(dev.join(p).join("partition"), "1\n").unwrap();
+            }
+            symlink(&dev, block.join(name)).unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn finds_the_first_partition_of_a_usb_disk() {
+        let root = sys_block(&[
+            ("mmcblk0", "platform/mmc", &["mmcblk0p1"]),
+            ("sda", "platform/usb1/1-1/host0", &["sda1", "sda2"]),
+        ]);
+        assert_eq!(find_stick(&root.path().join("block")), Some("sda1".into()));
+    }
+
+    #[test]
+    fn uses_the_whole_disk_when_it_has_no_partitions() {
+        let root = sys_block(&[("sdb", "platform/usb1/1-2/host1", &[])]);
+        assert_eq!(find_stick(&root.path().join("block")), Some("sdb".into()));
+    }
+
+    #[test]
+    fn ignores_disks_that_are_not_on_usb() {
+        let root = sys_block(&[
+            ("mmcblk0", "platform/mmc", &["mmcblk0p1"]),
+            ("loop0", "virtual", &[]),
+        ]);
+        assert_eq!(find_stick(&root.path().join("block")), None);
+    }
+
+    #[test]
+    fn refuses_a_file_over_its_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("payload.bin");
+        fs::write(&f, vec![0u8; 11]).unwrap();
+        assert_eq!(read_limited(&f, 11).unwrap().len(), 11);
+        assert!(read_limited(&f, 10).is_err());
+    }
+
+    #[test]
+    fn reads_the_three_files_and_names_a_missing_one() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("payload.bin"), b"p").unwrap();
+        fs::write(dir.path().join("interpreter.wasm"), b"w").unwrap();
+        let err = read_stick_files(dir.path())
+            .err()
+            .expect("sign.cbor is missing");
+        assert!(
+            err.to_string().contains("the stick has no sign.cbor"),
+            "{err}"
+        );
+        fs::write(dir.path().join("sign.cbor"), b"s").unwrap();
+        let c = read_stick_files(dir.path()).unwrap();
+        assert_eq!(
+            (c.payload, c.interpreter_wasm, c.signing_spec_cbor),
+            (b"p".to_vec(), b"w".to_vec(), b"s".to_vec())
+        );
     }
 }
