@@ -20,7 +20,7 @@ mod linux {
     use signer_hal::{Buttons, Display, UsbMount};
     use signer_pi::buttons::GpioButtons;
     use signer_pi::display::{find_framebuffer, FbDisplay};
-    use signer_pi::flow::{review_stick, Decision};
+    use signer_pi::flow::{review_stick, NoKeys};
     use signer_pi::usb::{find_stick, PiUsb, STICK_REMOVED};
     use std::path::{Path, PathBuf};
 
@@ -117,17 +117,18 @@ mod linux {
                 .is_none()
                 .then(|| signer_hal::HalError::Usb(STICK_REMOVED.into()))
         })));
-        let result = review_stick(hal, usb);
+        let result = review_stick(hal, usb, &mut NoKeys);
         hal.buttons.set_abort(None);
         let outcome = match result {
             Err(e) if e.to_string().contains(STICK_REMOVED) => {
                 hal.show_message("USB stick removed. Nothing was signed.")?;
                 return Ok(());
             }
-            Ok(Decision::Approved) => {
-                "Approved. Signing is not available yet: nothing was signed.".to_string()
-            }
-            Ok(Decision::Rejected) => "Rejected. Nothing was signed.".to_string(),
+            Ok(signatures) if signatures.is_empty() => "Nothing was signed.".to_string(),
+            Ok(signatures) => format!(
+                "{} signatures. Writing them to the stick is not available yet: nothing was written.",
+                signatures.len()
+            ),
             Err(e) => format!("Cannot review this stick: {e}"),
         };
         hal.show_message(&format!("{outcome} Remove the USB stick."))?;

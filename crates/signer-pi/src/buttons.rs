@@ -20,7 +20,7 @@ pub const LINES: [u32; 6] = [5, 6, 17, 22, 23, 27];
 pub fn event_for(line: u32) -> Option<ButtonEvent> {
     match line {
         5 => Some(ButtonEvent::Confirm),
-        6 => Some(ButtonEvent::Reject),
+        6 => Some(ButtonEvent::Mode),
         17 => Some(ButtonEvent::Up),
         22 => Some(ButtonEvent::Down),
         23 => Some(ButtonEvent::Open),
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(event_for(23), Some(ButtonEvent::Open));
         assert_eq!(event_for(27), Some(ButtonEvent::Back));
         assert_eq!(event_for(5), Some(ButtonEvent::Confirm));
-        assert_eq!(event_for(6), Some(ButtonEvent::Reject));
+        assert_eq!(event_for(6), Some(ButtonEvent::Mode));
         assert_eq!(event_for(17), Some(ButtonEvent::Up));
         assert_eq!(event_for(22), Some(ButtonEvent::Down));
     }
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn a_press_queued_before_the_screen_changed_is_discarded() {
         let mut src = fake(&[5, 5], &[6], 0);
-        assert_eq!(fresh(&mut src, |_, _| {}), Some(ButtonEvent::Reject));
+        assert_eq!(fresh(&mut src, |_, _| {}), Some(ButtonEvent::Mode));
     }
 
     #[test]
@@ -333,7 +333,7 @@ mod tests {
                 }
             }
         };
-        assert_eq!(fresh(&mut src, hold), Some(ButtonEvent::Reject));
+        assert_eq!(fresh(&mut src, hold), Some(ButtonEvent::Mode));
         assert_eq!(polls.first(), Some(&SETTLE));
         assert_eq!(polls.last(), Some(&(DEBOUNCE + POLL)));
     }
@@ -362,10 +362,10 @@ mod tests {
             events.push(wait_with_repeat(&mut src, &mut held, |_, d| total += d).unwrap());
             waited.push(total);
         }
-        use ButtonEvent::{Down, DownHeld, Reject};
+        use ButtonEvent::{Down, DownHeld, Mode};
         assert_eq!(
             events,
-            vec![Down, DownHeld, DownHeld, Reject],
+            vec![Down, DownHeld, DownHeld, Mode],
             "two held repeats, then a fresh press"
         );
         assert!(
@@ -391,7 +391,7 @@ mod tests {
         );
         let mut total = Duration::ZERO;
         let next = wait_with_repeat(&mut src, &mut held, |_, d| total += d).ok();
-        assert_eq!(next, Some(ButtonEvent::Reject));
+        assert_eq!(next, Some(ButtonEvent::Mode));
         assert!(total < REPEAT_DELAY, "released early: {total:?}");
     }
 
@@ -406,7 +406,7 @@ mod tests {
         );
         assert_eq!(
             wait_with_repeat(&mut src, &mut held, |_, _| {}).ok(),
-            Some(ButtonEvent::Reject),
+            Some(ButtonEvent::Mode),
             "the next answer is a fresh press, not a repeated #5"
         );
     }

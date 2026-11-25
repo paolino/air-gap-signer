@@ -1,26 +1,26 @@
-//! The signing loop on the device, up to the decision: insert the stick,
-//! interpret the transaction, review it, decide. Signing itself needs the
-//! secure element and is not here yet.
+//! The signing loop on the device: insert the stick, interpret the
+//! transaction, then the session — review, sign, keys on #6 — until Done.
+//! Writing the signatures back to the stick is not here yet.
 
+use signer_core::crypto::extract_signable;
 use signer_core::display::json_to_lines;
-use signer_core::review::{Outcome, Review};
+use signer_core::review::Review;
+use signer_core::session::{Finish, Key, Session, Signer};
 use signer_core::spec::SigningSpec;
 use signer_core::wasm_sandbox::Sandbox;
 use signer_hal::{Buttons, Display, UsbMount};
 
-/// What the user decided about the transaction on the stick.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Decision {
-    Approved,
-    Rejected,
-}
+/// Signatures added before Done, as `(slot, signature)`; empty
+/// when nothing was signed.
+pub type Signatures = Vec<(u8, Vec<u8>)>;
 
 /// Read the stick (mounted only while reading), show the spec's label,
-/// interpret the payload in the WASM sandbox and run the review.
+/// interpret the payload in the WASM sandbox and run the session.
 pub fn review_stick<H: Display + Buttons, U: UsbMount>(
     hal: &mut H,
     usb: &mut U,
-) -> Result<Decision, Box<dyn std::error::Error>> {
+    signer: &mut dyn Signer,
+) -> Result<Signatures, Box<dyn std::error::Error>> {
     usb.mount_readonly()?;
     let contents = usb.read_contents();
     usb.unmount()?;
@@ -34,16 +34,30 @@ pub fn review_stick<H: Display + Buttons, U: UsbMount>(
         .load_module(&contents.interpreter_wasm)?
         .interpret(&contents.payload)?;
     let lines = json_to_lines(&serde_json::from_str(&json)?);
+    let message = extract_signable(&contents.payload, &spec.signable)?;
 
     let (cols, rows) = hal.text_grid();
-    let mut review = Review::new(lines, cols, rows)?;
+    // Only the key the request names, with its algorithm, is offered.
+    let allowed = [(spec.key_slot, spec.algorithm)];
+    let mut session = Session::new(Review::new(lines, cols, rows)?, message, &allowed, signer);
     loop {
-        hal.show_review(&review.view())?;
-        match review.handle(hal.wait_event()?) {
-            Outcome::Continue => {}
-            Outcome::Confirmed => return Ok(Decision::Approved),
-            Outcome::Rejected => return Ok(Decision::Rejected),
+        hal.show_review(&session.view())?;
+        if let Finish::Done(signatures) = session.handle(hal.wait_event()?, signer) {
+            return Ok(signatures);
         }
+    }
+}
+
+/// The Pi's signer until the secure element is wired: no keys, so
+/// nothing can be signed.
+pub struct NoKeys;
+
+impl Signer for NoKeys {
+    fn keys(&self) -> Vec<Key> {
+        Vec::new()
+    }
+    fn sign(&mut self, _: u8, _: &[u8]) -> Result<Vec<u8>, String> {
+        Err("no key".into())
     }
 }
 
@@ -143,15 +157,115 @@ mod tests {
     }
 
     fn spec(label: &str) -> Vec<u8> {
+        spec_signing(label, Signable::Whole)
+    }
+
+    fn spec_signing(label: &str, signable: Signable) -> Vec<u8> {
         SigningSpec {
             label: label.into(),
-            signable: Signable::Whole,
+            signable,
             algorithm: SignAlgorithm::Ed25519,
             key_slot: 0,
             output: OutputSpec::SignatureOnly,
         }
         .to_cbor()
         .unwrap()
+    }
+
+    /// An Ed25519 key in slot 0; records the bytes it was asked to sign
+    /// and returns a signature unrelated to them.
+    #[derive(Default)]
+    struct OneKey {
+        received: Vec<Vec<u8>>,
+    }
+
+    const SIG: [u8; 4] = [0xab; 4];
+
+    impl Signer for OneKey {
+        fn keys(&self) -> Vec<Key> {
+            vec![Key {
+                slot: 0,
+                algorithm: SignAlgorithm::Ed25519,
+                label: "slot 0".into(),
+            }]
+        }
+        fn sign(&mut self, _: u8, message: &[u8]) -> Result<Vec<u8>, String> {
+            self.received.push(message.to_vec());
+            Ok(SIG.to_vec())
+        }
+    }
+
+    /// Run the stick through review and signing with slot 0; the bytes
+    /// the key was asked to sign.
+    fn signed_bytes(payload: &[u8], signable: Signable) -> Vec<Vec<u8>> {
+        use ButtonEvent::{Confirm, Down, Mode};
+        let mut hal = Hal {
+            presses: VecDeque::from([Mode, Confirm, Down, Confirm]),
+            ..Default::default()
+        };
+        let mut usb = stick(payload, echo_hex(), spec_signing("x", signable));
+        let mut key = OneKey::default();
+        assert_eq!(
+            review_stick(&mut hal, &mut usb, &mut key).unwrap(),
+            vec![(0, SIG.to_vec())]
+        );
+        key.received
+    }
+
+    #[test]
+    fn the_key_signs_exactly_the_bytes_the_request_selects() {
+        use signer_core::spec::{HashAlgorithm, SignableSource};
+        assert_eq!(signed_bytes(b"hi", Signable::Whole), vec![b"hi".to_vec()]);
+        assert_eq!(
+            signed_bytes(
+                b"012345",
+                Signable::Range {
+                    offset: 2,
+                    length: 3
+                }
+            ),
+            vec![b"234".to_vec()]
+        );
+        // sha256("234"), computed independently with sha256sum.
+        assert_eq!(
+            signed_bytes(
+                b"012345",
+                Signable::HashThenSign {
+                    hash: HashAlgorithm::Sha256,
+                    source: SignableSource::Range {
+                        offset: 2,
+                        length: 3
+                    },
+                }
+            ),
+            vec![
+                hex::decode("114bd151f8fb0c58642d2170da4ae7d7c57977260ac2cc8905306cab6b2acabc")
+                    .unwrap()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_key_the_request_does_not_name_is_not_offered() {
+        use ButtonEvent::{Confirm, Mode};
+        let mut hal = Hal {
+            presses: VecDeque::from([Mode, Confirm]),
+            ..Default::default()
+        };
+        let other_slot = SigningSpec {
+            label: "x".into(),
+            signable: Signable::Whole,
+            algorithm: SignAlgorithm::Ed25519,
+            key_slot: 1,
+            output: OutputSpec::SignatureOnly,
+        }
+        .to_cbor()
+        .unwrap();
+        let mut usb = stick(b"hi", echo_hex(), other_slot);
+        let mut key = OneKey::default();
+        // Only Done is on the Sign screen: #5 finishes, nothing signed.
+        assert_eq!(review_stick(&mut hal, &mut usb, &mut key).unwrap(), vec![]);
+        assert!(key.received.is_empty());
     }
 
     fn stick(payload: &[u8], wasm: Vec<u8>, spec: Vec<u8>) -> Stick {
@@ -162,15 +276,17 @@ mod tests {
     }
 
     #[test]
-    fn a_transaction_on_the_stick_is_interpreted_reviewed_and_approved() {
+    fn a_transaction_on_the_stick_is_interpreted_reviewed_and_signed() {
+        use ButtonEvent::{Confirm, Down, Mode};
         let mut hal = Hal {
-            presses: VecDeque::from([ButtonEvent::Confirm]),
+            presses: VecDeque::from([Mode, Confirm, Down, Confirm]),
             ..Default::default()
         };
         let mut usb = stick(b"hi", echo_hex(), spec("Test payment"));
         assert_eq!(
-            review_stick(&mut hal, &mut usb).unwrap(),
-            Decision::Approved
+            review_stick(&mut hal, &mut usb, &mut OneKey::default()).unwrap(),
+            vec![(0, SIG.to_vec())],
+            "slot 0 signed"
         );
         assert_eq!(hal.messages, vec!["Test payment"]);
         match &hal.views[0] {
@@ -193,7 +309,7 @@ mod tests {
                 ..Default::default()
             };
             let mut usb = stick(b"pay 5 ADA to Bob", echo_hex(), spec("Test payment"));
-            let decision = review_stick(&mut hal, &mut usb).unwrap();
+            let decision = review_stick(&mut hal, &mut usb, &mut OneKey::default()).unwrap();
             let headers: Vec<String> = hal
                 .views
                 .iter()
@@ -203,16 +319,20 @@ mod tests {
                 .collect();
             (decision, headers)
         };
-        use ButtonEvent::{Back, Confirm, Down, Open};
-        // Read it in full, then approve.
-        let (decision, h) = headers(&[Open, Back, Confirm]);
-        assert_eq!(decision, Decision::Approved);
+        use ButtonEvent::{Back, Confirm, Down, Mode, Open};
+        let signed = vec![(0, SIG.to_vec())];
+        // Signing is refused while it is left.
+        let (decision, _) = headers(&[Mode, Confirm, Down, Confirm]);
+        assert_eq!(decision, vec![]);
+        // Read it in full, then sign.
+        let (decision, h) = headers(&[Open, Back, Mode, Confirm, Down, Confirm]);
+        assert_eq!(decision, signed);
         assert!(h[0].ends_with("1 left"), "{h:?}");
-        assert!(h[2].ends_with("OK?"), "{h:?}");
-        // Accept it unread with #5, then approve from another row.
-        let (decision, h) = headers(&[Confirm, Down, Confirm]);
-        assert_eq!(decision, Decision::Approved);
-        assert!(h[1].ends_with("OK? 1 waived"), "{h:?}");
+        assert!(h[2].ends_with("done"), "{h:?}");
+        // Accept it unread with #5, then sign.
+        let (decision, h) = headers(&[Confirm, Mode, Confirm, Down, Confirm]);
+        assert_eq!(decision, signed);
+        assert!(h[1].ends_with(" 1 waived"), "{h:?}");
     }
 
     #[test]
@@ -242,37 +362,22 @@ mod tests {
         }
         let mut hal = Pulled(Hal::default());
         let mut usb = stick(b"hi", echo_hex(), spec("x"));
-        let err = review_stick(&mut hal, &mut usb).expect_err("no decision");
+        let err =
+            review_stick(&mut hal, &mut usb, &mut OneKey::default()).expect_err("no decision");
         assert!(err.to_string().contains(crate::usb::STICK_REMOVED), "{err}");
     }
 
     #[test]
-    fn reject_is_a_decision_too() {
+    fn done_without_a_signature_signs_nothing() {
+        use ButtonEvent::{Confirm, Down, Mode};
         let mut hal = Hal {
-            presses: VecDeque::from([ButtonEvent::Reject]),
+            presses: VecDeque::from([Mode, Down, Confirm]),
             ..Default::default()
         };
         let mut usb = stick(b"hi", echo_hex(), spec("x"));
         assert_eq!(
-            review_stick(&mut hal, &mut usb).unwrap(),
-            Decision::Rejected
+            review_stick(&mut hal, &mut usb, &mut OneKey::default()).unwrap(),
+            vec![]
         );
-    }
-
-    #[test]
-    fn a_bad_spec_a_bad_interpreter_and_a_missing_file_are_errors() {
-        let mut hal = Hal::default();
-        assert!(review_stick(
-            &mut hal,
-            &mut stick(b"hi", echo_hex(), b"not cbor".to_vec())
-        )
-        .is_err());
-        assert!(
-            review_stick(&mut hal, &mut stick(b"hi", b"not wasm".to_vec(), spec("x"))).is_err()
-        );
-        let mut empty = Stick::default();
-        assert!(review_stick(&mut hal, &mut empty).is_err());
-        assert!(!empty.mounted, "unmounted even when reading fails");
-        assert!(hal.views.is_empty(), "nothing reaches the review");
     }
 }

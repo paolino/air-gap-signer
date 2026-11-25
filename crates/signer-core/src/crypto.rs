@@ -17,33 +17,28 @@ pub enum CryptoError {
 ///
 /// The result is the hash (or raw bytes) that gets sent to the secure element
 /// for signing. The Pi never handles private key material.
+/// `length` bytes of `payload` from `offset`; bounds come from the stick,
+/// so overflow is an error, not a panic.
+fn range(payload: &[u8], offset: usize, length: usize) -> Result<&[u8], CryptoError> {
+    offset
+        .checked_add(length)
+        .and_then(|end| payload.get(offset..end))
+        .ok_or(CryptoError::RangeOutOfBounds {
+            offset,
+            end: offset.saturating_add(length),
+            payload_len: payload.len(),
+        })
+}
+
 pub fn extract_signable(payload: &[u8], signable: &Signable) -> Result<Vec<u8>, CryptoError> {
     match signable {
         Signable::Whole => Ok(payload.to_vec()),
-        Signable::Range { offset, length } => {
-            let end = offset + length;
-            if end > payload.len() {
-                return Err(CryptoError::RangeOutOfBounds {
-                    offset: *offset,
-                    end,
-                    payload_len: payload.len(),
-                });
-            }
-            Ok(payload[*offset..end].to_vec())
-        }
+        Signable::Range { offset, length } => Ok(range(payload, *offset, *length)?.to_vec()),
         Signable::HashThenSign { hash, source } => {
             let source_bytes = match source {
                 SignableSource::Whole => payload.to_vec(),
                 SignableSource::Range { offset, length } => {
-                    let end = offset + length;
-                    if end > payload.len() {
-                        return Err(CryptoError::RangeOutOfBounds {
-                            offset: *offset,
-                            end,
-                            payload_len: payload.len(),
-                        });
-                    }
-                    payload[*offset..end].to_vec()
+                    range(payload, *offset, *length)?.to_vec()
                 }
             };
             Ok(hash_bytes(*hash, &source_bytes))
@@ -110,6 +105,19 @@ mod tests {
             },
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn ranges_that_overflow_are_errors_not_panics() {
+        let payload = b"short";
+        for (offset, length) in [(usize::MAX, 2), (2, usize::MAX), (usize::MAX, usize::MAX)] {
+            assert!(extract_signable(payload, &Signable::Range { offset, length }).is_err());
+            let hashed = Signable::HashThenSign {
+                hash: HashAlgorithm::Blake2b256,
+                source: SignableSource::Range { offset, length },
+            };
+            assert!(extract_signable(payload, &hashed).is_err());
+        }
     }
 
     #[test]

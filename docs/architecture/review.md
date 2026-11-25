@@ -4,8 +4,8 @@
 
 The person holding the signer. A transaction has arrived on the USB
 stick and the interpreter has turned it into fields; before anything is
-signed, they read every field on a 240×240 screen and approve with
-button #5 or refuse with #6.
+signed, they read every field on a 240×240 screen, then switch to the
+Sign screen with #6 and add a signature with #5 — or finish without one.
 
 !!! note "What runs today"
     The desktop simulator runs the whole flow: USB folder, interpreter,
@@ -26,7 +26,7 @@ with a field still hidden in an unvisited branch or behind an ellipsis.
 ## What the user sees
 
 ```text
-tx              7 left      tx›outputs›_0  3 left      …puts›_0›address 1/1
+REVIEW          7 left      outputs›_0     3 left      outputs›_0›addr… 1/1
 fee: 171485                 address: addr…tjqp          address:
 network: preprod      →     lovelace: 5000000     →      addr_test1qz2fxv2um
 outputs                                                  yhttkxyxp8x0dlpdt3k
@@ -36,10 +36,11 @@ validity_e…: 87654321
 ```
 
 - The **header** is the branch from the root to the level shown,
-  `tx›outputs›_0`. Each step right adds a segment, each step left
-  removes one. When it no longer fits, its start is cut so the deepest
+  `outputs›_0`; at the top it names the mode, `REVIEW`. Each step right
+  adds a segment, each step left removes one. When it no longer fits, its start is cut so the deepest
   segments stay visible. On the right it counts what is still to see,
-  and says `OK?` when nothing is left.
+  and says `done` when nothing is left — or `2 waived` when some of it
+  was accepted unread.
 - Below it are the **entries** of that level, and under each group its
   own entries, indented. A group whose entries are listed under it is a
   plain heading (`outputs`). A nested group (`_0`) shows just its name
@@ -75,14 +76,41 @@ validity_e…: 87654321
 | joystick up / down | move the cursor to the previous / next field or nested group, skipping headings; a press at the last or first row wraps around; held, it repeats and stops there | previous / next page |
 | joystick right | on a nested group: go into it; on a value or a cut name: show it in full; on a heading: nothing | from a group's full name: go into it |
 | joystick left | back to the screen you came from, onto the row you left | back to the level |
-| button #5 | on a light-red row (a branch or a cut value still to see): accept it unread; on a grey row: undo that; elsewhere: approve, once nothing is left to see | — |
-| button #6 | reject | reject |
+| button #5 | on a light-red row (a branch or a cut value still to see): accept it unread; on a grey row: undo that | — |
+| button #6 | next mode: Review → Sign → Keys | next mode |
 | joystick press | — | — |
 
 In the desktop simulator the arrow keys stand in for the joystick,
-Enter for #5 and Esc for #6.
+Enter for #5 and Tab for #6.
 
-## States
+## Modes
+
+Button #6 moves between three screens; the header names Sign and Keys,
+and Review shows `REVIEW` at the top and its branch below that.
+
+- **Review** — this page: browse, read, accept unread.
+- **Sign** — the keys able to sign, then **Done**. #5 on a key adds its
+  signature at once (`SIGNED slot 0`); #5 again removes it. There is no
+  confirmation and no reject: the toggle is the undo, and Done with no
+  signature signs nothing. Adding is refused while anything is left to
+  review — the header says how much. Signatures stay in memory until
+  Done. Without a key the header says `SIGN no key` and only Done is
+  offered.
+- **Keys** — PIN, create, restore, back up, export the public key; listed,
+  not yet wired to the secure element.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Review: transaction interpreted
+    Review --> Sign: #6
+    Sign --> Keys: #6
+    Keys --> Review: #6
+    Review --> Review: browse, #5 accepts unread or undoes
+    Sign --> Sign: #5 on a key adds or removes its signature (adding needs nothing left)
+    Sign --> [*]: #5 on Done, with the signatures still added
+```
+
+## States of the review
 
 ```mermaid
 stateDiagram-v2
@@ -94,12 +122,8 @@ stateDiagram-v2
     Value --> Value: up / down turns the page
     Value --> Level: left
     Level --> Level: #5 on a light-red row accepts it unread, on a grey row undoes that
-    Level --> Approved: #5 and nothing left to see
-    Level --> Level: #5 while something is left (ignored)
-    Level --> Rejected: #6
-    Value --> Rejected: #6
-    Approved --> [*]: secure element signs
-    Rejected --> [*]: nothing is signed
+    Level --> Ready: nothing left to see
+    Ready --> [*]: signing allowed in Sign mode
 ```
 
 ## What counts as shown
@@ -110,8 +134,8 @@ flowchart LR
     V["value or group name cut with …"] -->|"shown whole, or opened<br/>and paged to its last page"| R["read"]
     S --> C{"every entry seen<br/>and every cut entry read?"}
     R --> C
-    C -->|yes| OK["header says OK?<br/>#5 approves"]
-    C -->|no| N["header counts what is left<br/>#5 is ignored"]
+    C -->|yes| OK["header says done<br/>Sign mode can sign"]
+    C -->|no| N["header counts what is left<br/>signing is refused"]
 ```
 
 An entry reaches the screen in its parent's level, or nested one level
@@ -124,10 +148,9 @@ On a light-red row — a branch with something still to see, or a value
 cut with `…` and not read — #5 accepts it unread at once. It and
 everything under it stop blocking approval and turn **grey**, apart from
 what was actually read; #5 again on the grey row undoes it. When nothing
-is left the header says `OK? 2 waived` instead of `OK?`, so approval
+is left the header says `2 waived` instead of `done`, so approval
 means "everything was shown, or knowingly accepted unread". On a row
-already read, #5 only approves, once nothing is left; on a grey row it
-undoes instead, which the header shows before anything is approved.
+already read, #5 does nothing.
 
 ## Buttons cannot answer a screen they did not see
 
@@ -155,4 +178,5 @@ in [#21](https://github.com/paolino/air-gap-signer/issues/21).
 | Cursor skips headings | Cursor stops on every row | A heading is not a field and right does nothing on it. |
 | Cursor as an amber stripe at the right edge | Full-width bars (dark blue, light, amber, colour-inverted, grey), outline box, underline, left stripe, highlighter | Tried on the device and on camera: bars made text unreadable on camera; the stripe keeps every row's text and colour as is. |
 | Only up and down repeat when held | Every control repeats | A held button must never confirm, reject, open or go back by itself. |
-| #5 accepts a branch or a cut value unread at once, #5 again undoes; grey rows; counted in the header | Only full review; a confirmation question before accepting; values never accepted | Tried on the device: the question was one press too many and the undo serves the same purpose; accepting stays visible (grey rows, `OK? 2 waived`). |
+| #5 accepts a branch or a cut value unread at once, #5 again undoes; grey rows; counted in the header | Only full review; a confirmation question before accepting; values never accepted | Tried on the device: the question was one press too many and the undo serves the same purpose; accepting stays visible (grey rows, `2 waived`). |
+| #6 cycles Review, Sign, Keys; #5 adds and removes a signature | #6 rejects; a confirmation before signing; a Reject entry | Tried on the device: a signature that can be removed needs no confirmation, and finishing with none already rejects. |
