@@ -9,15 +9,17 @@ build:
 build-wasm:
     cargo build -p echo-hex --target wasm32-unknown-unknown --release
 
-# Cross-compile the Raspberry Pi demo (static aarch64 binary)
+# Cross-compile the Raspberry Pi binaries (static aarch64)
 build-pi:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" != Linux ]; then echo "build-pi: skipped, needs a Linux host"; exit 0; fi
     cargo build -p signer-pi --release --target aarch64-unknown-linux-musl
-    bin=target/aarch64-unknown-linux-musl/release/signer-pi-demo
-    file "$bin"
-    file "$bin" | grep -q "ARM aarch64.*statically linked"
+    for bin in signer-pi signer-pi-demo; do
+        f=target/aarch64-unknown-linux-musl/release/$bin
+        file "$f"
+        file "$f" | grep -q "ARM aarch64.*statically linked"
+    done
 
 # Run all tests
 test: build-wasm
