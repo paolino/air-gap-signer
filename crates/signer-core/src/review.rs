@@ -1,7 +1,7 @@
 //! The transaction review a user goes through before approving.
 //!
 //! The transaction is browsed as a tree. The header is the branch from
-//! the root to the level shown (`tx›outputs`); below it are that level's
+//! the root to the level shown (`outputs›_0`, or `REVIEW` at the root); below it are that level's
 //! entries, and under each group its own entries, indented one level.
 //! Moving right on a group goes into it; on a value, or a group whose
 //! name is cut, it shows the entry in full. Moving left goes back up.
@@ -96,7 +96,7 @@ pub const MIN_ROWS: usize = 4;
 pub const GROUP_MARK: char = '›';
 
 /// The branch label of the root.
-const ROOT: &str = "tx";
+const ROOT: &str = "REVIEW";
 
 /// Columns a nested entry is indented by.
 const INDENT: usize = 2;
@@ -249,8 +249,8 @@ impl Review {
         match self.detail {
             None => {
                 let status = match (self.remaining(), self.waivers.len()) {
-                    (0, 0) => "OK?".to_string(),
-                    (0, w) => format!("OK? {w} waived"),
+                    (0, 0) => "done".to_string(),
+                    (0, w) => format!("{w} waived"),
                     (n, _) => format!("{n} left"),
                 };
                 let rows = self
@@ -498,7 +498,8 @@ impl Review {
         (format!("{pad}{cut}"), true)
     }
 
-    /// The keys from the root to `node`, e.g. `tx›outputs›[0]`.
+    /// The keys from the root to `node`, e.g. `outputs›_0`; the mode's
+    /// name, `REVIEW`, at the root.
     fn branch(&self, node: usize) -> String {
         let mut keys = Vec::new();
         let mut n = node;
@@ -506,7 +507,9 @@ impl Review {
             keys.push(self.nodes[n].key.as_deref().unwrap_or("?"));
             n = self.nodes[n].parent;
         }
-        keys.push(ROOT);
+        if keys.is_empty() {
+            keys.push(ROOT);
+        }
         keys.reverse();
         keys.join(&GROUP_MARK.to_string())
     }
@@ -685,7 +688,7 @@ mod tests {
     fn each_group_lists_its_entries_under_it() {
         let r = review(tx());
         let (header, rows, sel) = level(&r);
-        assert!(header.starts_with("tx "), "{header}");
+        assert!(header.starts_with("REVIEW "), "{header}");
         assert_eq!(rows, vec!["fee: 171485", "outputs", "  _0", "  _1"]);
         assert_eq!(sel, 0);
     }
@@ -754,7 +757,7 @@ mod tests {
         select(&mut r, "  _0");
         r.handle(ButtonEvent::Open);
         let (header, rows, sel) = level(&r);
-        assert!(header.starts_with("tx›outputs›_0 "), "{header}");
+        assert!(header.starts_with("outputs›_0 "), "{header}");
         assert!(rows[0].starts_with("address: addr_"), "{}", rows[0]);
         assert!(rows[0].contains('…'));
         assert_eq!(rows[1], "lovelace: 5000000");
@@ -766,10 +769,10 @@ mod tests {
         let mut r = review(tx());
         select(&mut r, "  _1");
         r.handle(ButtonEvent::Open);
-        assert!(level(&r).0.starts_with("tx›outputs›_1 "));
+        assert!(level(&r).0.starts_with("outputs›_1 "));
         r.handle(ButtonEvent::Back);
         let (header, rows, sel) = level(&r);
-        assert!(header.starts_with("tx "), "{header}");
+        assert!(header.starts_with("REVIEW "), "{header}");
         assert_eq!(rows[sel], "  _1");
     }
 
@@ -808,7 +811,7 @@ mod tests {
         select(&mut r, "  _1");
         r.handle(ButtonEvent::Open);
         assert_eq!(r.remaining(), 0);
-        assert!(level(&r).0.ends_with("OK?"));
+        assert!(level(&r).0.ends_with("done"));
         assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
     }
 
@@ -876,7 +879,7 @@ mod tests {
     fn back_at_the_root_and_confirm_in_a_value_do_nothing() {
         let mut r = review(tx());
         assert_eq!(r.handle(ButtonEvent::Back), Outcome::Continue);
-        assert!(level(&r).0.starts_with("tx "));
+        assert!(level(&r).0.starts_with("REVIEW "));
         r.handle(ButtonEvent::Open);
         assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
         assert!(matches!(r.view(), View::Detail { .. }));
@@ -1143,7 +1146,10 @@ mod tests {
         }
         assert_eq!(r.remaining(), 0);
         let (header, _, _) = level(&r);
-        assert!(header.ends_with("OK? 2 waived"), "{header}");
+        assert!(
+            header.ends_with(" 2 waived"),
+            "{header}"
+        );
         select(&mut r, "fee");
         assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Confirmed);
     }

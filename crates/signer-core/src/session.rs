@@ -153,7 +153,7 @@ impl Session {
             Mode::Sign => {
                 let left = match (self.keys.len(), self.review.remaining()) {
                     (0, _) => "no key".to_string(),
-                    (_, 0) => "OK?".to_string(),
+                    (_, 0) => "ready".to_string(),
                     (_, n) => format!("{n} left"),
                 };
                 let mut rows: Vec<Row> = self
@@ -309,7 +309,7 @@ mod tests {
         let mut s = session(serde_json::json!({"memo": long}), &f);
         s.handle(ButtonEvent::Confirm, &mut f); // accept the cut memo unread
         let (header, r, _) = rows(&s);
-        assert!(header.ends_with("OK? 1 waived"), "{header} {r:?}");
+        assert!(header.ends_with(" 1 waived"), "{header} {r:?}");
     }
 
     #[test]

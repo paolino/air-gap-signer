@@ -26,7 +26,7 @@ with a field still hidden in an unvisited branch or behind an ellipsis.
 ## What the user sees
 
 ```text
-tx              7 left      tx›outputs›_0  3 left      …puts›_0›address 1/1
+REVIEW          7 left      outputs›_0     3 left      outputs›_0›addr… 1/1
 fee: 171485                 address: addr…tjqp          address:
 network: preprod      →     lovelace: 5000000     →      addr_test1qz2fxv2um
 outputs                                                  yhttkxyxp8x0dlpdt3k
@@ -36,10 +36,11 @@ validity_e…: 87654321
 ```
 
 - The **header** is the branch from the root to the level shown,
-  `tx›outputs›_0`. Each step right adds a segment, each step left
-  removes one. When it no longer fits, its start is cut so the deepest
+  `outputs›_0`; at the top it names the mode, `REVIEW`. Each step right
+  adds a segment, each step left removes one. When it no longer fits, its start is cut so the deepest
   segments stay visible. On the right it counts what is still to see,
-  and says `OK?` when nothing is left.
+  and says `done` when nothing is left — or `2 waived` when some of it
+  was accepted unread.
 - Below it are the **entries** of that level, and under each group its
   own entries, indented. A group whose entries are listed under it is a
   plain heading (`outputs`). A nested group (`_0`) shows just its name
@@ -85,7 +86,7 @@ Enter for #5 and Esc for #6.
 ## Modes
 
 Button #6 moves between three screens; the header names Sign and Keys,
-and Review keeps its branch header.
+and Review shows `REVIEW` at the top and its branch below that.
 
 - **Review** — this page: browse, read, accept unread.
 - **Sign** — the keys able to sign, then **Done**. #5 on a key adds its
@@ -133,7 +134,7 @@ flowchart LR
     V["value or group name cut with …"] -->|"shown whole, or opened<br/>and paged to its last page"| R["read"]
     S --> C{"every entry seen<br/>and every cut entry read?"}
     R --> C
-    C -->|yes| OK["header says OK?<br/>Sign mode can sign"]
+    C -->|yes| OK["header says done<br/>Sign mode can sign"]
     C -->|no| N["header counts what is left<br/>signing is refused"]
 ```
 
@@ -147,7 +148,7 @@ On a light-red row — a branch with something still to see, or a value
 cut with `…` and not read — #5 accepts it unread at once. It and
 everything under it stop blocking approval and turn **grey**, apart from
 what was actually read; #5 again on the grey row undoes it. When nothing
-is left the header says `OK? 2 waived` instead of `OK?`, so approval
+is left the header says `2 waived` instead of `done`, so approval
 means "everything was shown, or knowingly accepted unread". On a row
 already read, #5 does nothing.
 

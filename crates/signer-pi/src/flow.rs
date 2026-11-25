@@ -237,11 +237,11 @@ mod tests {
         let (decision, h) = headers(&[Open, Back, Mode, Confirm, Down, Confirm]);
         assert_eq!(decision, signed);
         assert!(h[0].ends_with("1 left"), "{h:?}");
-        assert!(h[2].ends_with("OK?"), "{h:?}");
+        assert!(h[2].ends_with("done"), "{h:?}");
         // Accept it unread with #5, then sign.
         let (decision, h) = headers(&[Confirm, Mode, Confirm, Down, Confirm]);
         assert_eq!(decision, signed);
-        assert!(h[1].ends_with("OK? 1 waived"), "{h:?}");
+        assert!(h[1].ends_with(" 1 waived"), "{h:?}");
     }
 
     #[test]
