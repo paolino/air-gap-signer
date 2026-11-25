@@ -68,8 +68,16 @@ pub fn wait_with_repeat<S: EdgeSource>(
             _ => None,
         };
         if let Some(line) = line {
-            sleep(source, if first { REPEAT_DELAY } else { REPEAT_EVERY });
-            if source.pressed(line)? {
+            // Look every POLL, so a released control is noticed at once.
+            let wait = if first { REPEAT_DELAY } else { REPEAT_EVERY };
+            let mut waited = Duration::ZERO;
+            let mut still = source.pressed(line)?;
+            while still && waited < wait {
+                sleep(source, POLL);
+                waited += POLL;
+                still = source.pressed(line)?;
+            }
+            if still {
                 *held = Some(Held {
                     event,
                     first: false,
@@ -215,8 +223,8 @@ mod tests {
     /// Edges queued before the wait, edges that arrive during it, and how
     /// many more polls a control stays held.
     struct Fake {
-        /// Answers to successive `pressed` checks: the line held then.
-        holding: VecDeque<u32>,
+        /// The line held down, and for how many more `pressed` checks.
+        holding: Option<(u32, usize)>,
         queued: VecDeque<u32>,
         arriving: VecDeque<u32>,
         held_for: usize,
@@ -239,13 +247,19 @@ mod tests {
         }
 
         fn pressed(&mut self, line: u32) -> Result<bool, HalError> {
-            Ok(self.holding.pop_front().is_some_and(|l| l == line))
+            match &mut self.holding {
+                Some((l, n)) if *n > 0 => {
+                    *n -= 1;
+                    Ok(*l == line)
+                }
+                _ => Ok(false),
+            }
         }
     }
 
     fn fake(queued: &[u32], arriving: &[u32], held_for: usize) -> Fake {
         Fake {
-            holding: VecDeque::new(),
+            holding: None,
             queued: queued.iter().copied().collect(),
             arriving: arriving.iter().copied().collect(),
             held_for,
@@ -303,15 +317,23 @@ mod tests {
         assert_eq!(fresh(&mut src, |_, _| {}), Some(ButtonEvent::Up));
     }
 
+    /// Checks needed to hold through the first delay and `n` repeats.
+    fn checks_for(repeats: usize) -> usize {
+        let per = |d: Duration| (d.as_millis() / POLL.as_millis()) as usize + 1;
+        per(REPEAT_DELAY) + repeats.saturating_sub(1) * per(REPEAT_EVERY)
+    }
+
     #[test]
     fn holding_down_repeats_after_a_delay_then_faster() {
         let mut src = fake(&[], &[22, 6], 0);
-        src.holding = VecDeque::from([22, 22]); // still held at two checks, then up
+        src.holding = Some((22, checks_for(2)));
         let mut held = None;
-        let mut pauses = Vec::new();
         let mut events = Vec::new();
+        let mut waited = Vec::new();
         for _ in 0..4 {
-            events.push(wait_with_repeat(&mut src, &mut held, |_, d| pauses.push(d)).unwrap());
+            let mut total = Duration::ZERO;
+            events.push(wait_with_repeat(&mut src, &mut held, |_, d| total += d).unwrap());
+            waited.push(total);
         }
         use ButtonEvent::{Down, Reject};
         assert_eq!(
@@ -320,18 +342,36 @@ mod tests {
             "two repeats, then a fresh press"
         );
         assert!(
-            pauses.contains(&REPEAT_DELAY) && pauses.contains(&REPEAT_EVERY),
-            "{pauses:?}"
+            waited[1] >= REPEAT_DELAY,
+            "first repeat waits the delay: {waited:?}"
         );
-        let delay = pauses.iter().position(|&d| d == REPEAT_DELAY).unwrap();
-        let every = pauses.iter().position(|&d| d == REPEAT_EVERY).unwrap();
-        assert!(delay < every, "the first repeat waits longer: {pauses:?}");
+        assert!(
+            waited[2] < REPEAT_DELAY,
+            "later repeats are faster: {waited:?}"
+        );
+    }
+
+    #[test]
+    fn a_quick_tap_does_not_hold_up_the_next_press() {
+        // Down is released right away; the wait for a repeat must notice
+        // at once instead of sleeping through the whole delay.
+        let mut src = fake(&[], &[22, 6], 0);
+        src.holding = Some((22, 1));
+        let mut held = None;
+        assert_eq!(
+            wait_with_repeat(&mut src, &mut held, |_, _| {}).ok(),
+            Some(ButtonEvent::Down)
+        );
+        let mut total = Duration::ZERO;
+        let next = wait_with_repeat(&mut src, &mut held, |_, d| total += d).ok();
+        assert_eq!(next, Some(ButtonEvent::Reject));
+        assert!(total < REPEAT_DELAY, "released early: {total:?}");
     }
 
     #[test]
     fn a_held_confirm_never_repeats() {
         let mut src = fake(&[], &[5, 6], 0);
-        src.holding = VecDeque::from([5, 5, 5]);
+        src.holding = Some((5, 1000));
         let mut held = None;
         assert_eq!(
             wait_with_repeat(&mut src, &mut held, |_, _| {}).ok(),
@@ -348,7 +388,7 @@ mod tests {
     fn open_and_back_never_repeat() {
         for line in [23, 27] {
             let mut src = fake(&[], &[line, 17], 0);
-            src.holding = VecDeque::from([line, line]);
+            src.holding = Some((line, 1000));
             let mut held = None;
             wait_with_repeat(&mut src, &mut held, |_, _| {}).unwrap();
             assert_eq!(

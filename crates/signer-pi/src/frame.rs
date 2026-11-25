@@ -39,6 +39,9 @@ pub struct TextFont {
     /// pixels (exclusive): descenders and underscores can reach below
     /// `line_height`.
     pub ink_bottom: usize,
+    /// How far right of its cell's left edge any drawable glyph can ink,
+    /// in pixels (exclusive).
+    pub ink_right: usize,
 }
 
 impl TextFont {
@@ -58,6 +61,15 @@ impl TextFont {
             .expect("font has horizontal metrics");
         let advance = font.metrics('M', px).advance_width.round() as usize;
         let ascent = line.ascent.ceil() as i32;
+        let ink_right = (' '..='~')
+            .chain(['…', '›'])
+            .map(|c| {
+                let m = font.metrics(c, px);
+                m.xmin + m.width as i32
+            })
+            .max()
+            .unwrap_or(0)
+            .max(advance as i32) as usize;
         let ink_bottom = (' '..='~')
             .chain(['…', '›'])
             .map(|c| ascent - font.metrics(c, px).ymin)
@@ -69,6 +81,7 @@ impl TextFont {
             px,
             ascent,
             ink_bottom,
+            ink_right,
             advance,
             line_height: line.new_line_size.ceil() as usize,
         }

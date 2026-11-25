@@ -28,6 +28,14 @@ pub fn find_framebuffer(sysfs: &Path, name: &str) -> Option<PathBuf> {
 
 /// Check, from its sysfs directory, that a framebuffer is the 240×240
 /// RGB565 panel this display draws for.
+/// Take the screen for this program alone, so two programs can never
+/// draw on it at once.
+pub fn lock_screen(file: &File, device: &Path) -> Result<(), HalError> {
+    file.try_lock().map_err(|_| {
+        HalError::Display(format!("{} is in use by another program", device.display()))
+    })
+}
+
 pub fn check_geometry(fb_sysfs: &Path) -> Result<(), HalError> {
     let expected = [
         ("bits_per_pixel", "16".to_string()),
@@ -78,6 +86,7 @@ impl FbDisplay {
         }
         let err = |e: std::io::Error| HalError::Display(format!("{}: {e}", device.display()));
         let file = OpenOptions::new().write(true).open(device).map_err(err)?;
+        lock_screen(&file, device)?;
         if !file.metadata().map_err(err)?.file_type().is_char_device() {
             return Err(HalError::Display(format!(
                 "{} is not a framebuffer device",
@@ -113,8 +122,14 @@ impl FbDisplay {
         }
     }
 
+    /// Columns whose glyphs, overhang included, all end before the
+    /// cursor stripe.
     fn cols(&self) -> usize {
-        SIZE / self.font.advance
+        let ink = self.font.ink_right.max(self.bold.ink_right);
+        match (SIZE - CURSOR_WIDTH).checked_sub(ink) {
+            Some(room) => room / self.font.advance + 1,
+            None => 0,
+        }
     }
 
     /// Rows whose glyphs, descenders included, all land on the panel.
@@ -393,6 +408,37 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_cursor_stripe_never_covers_text_at_any_font_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("frame");
+        for px in (8..=60).map(|p| p as f32).chain([10.2]) {
+            let d = FbDisplay::with_file(path.clone(), File::create(&path).unwrap(), px);
+            let last = (d.cols() - 1) * d.font.advance;
+            for font in [&d.font, &d.bold] {
+                assert!(
+                    last + font.ink_right <= SIZE - CURSOR_WIDTH,
+                    "size {px}: the last column inks to {}",
+                    last + font.ink_right
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_screen_already_in_use_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fb");
+        fs::write(&path, b"").unwrap();
+        let first = File::options().write(true).open(&path).unwrap();
+        let second = File::options().write(true).open(&path).unwrap();
+        assert!(lock_screen(&first, &path).is_ok());
+        assert!(
+            lock_screen(&second, &path).is_err(),
+            "a second program cannot draw at the same time"
+        );
     }
 
     #[test]
