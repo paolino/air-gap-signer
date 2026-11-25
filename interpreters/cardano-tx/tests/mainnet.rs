@@ -133,3 +133,21 @@ fn the_minting_transaction_shows_its_mint() {
 fn garbage_is_refused() {
     assert!(describe(b"not a transaction").is_err());
 }
+
+#[test]
+fn fields_come_in_reading_order() {
+    let (_, cbor, _) = fixtures()
+        .into_iter()
+        .find(|f| f.0 == "0a0f9d4c3b15")
+        .unwrap();
+    let tx = describe(&cbor).unwrap();
+    let keys: Vec<&str> = tx.as_object().unwrap().keys().map(String::as_str).collect();
+    let fee = keys.iter().position(|k| *k == "fee").unwrap();
+    let inputs = keys.iter().position(|k| *k == "inputs").unwrap();
+    let outputs = keys.iter().position(|k| *k == "outputs").unwrap();
+    let collateral = keys.iter().position(|k| *k == "collateral").unwrap();
+    assert!(
+        fee < inputs && inputs < outputs && outputs < collateral,
+        "{keys:?}"
+    );
+}
