@@ -1,0 +1,19 @@
+[package]
+name = "cardano-tx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WASM interpreter: Cardano transaction CBOR to review JSON"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pallas-traverse = "1.4"
+pallas-addresses = "1.4"
+pallas-primitives = "1.4"
+serde_json.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+signer-core = { path = "../../crates/signer-core" }
