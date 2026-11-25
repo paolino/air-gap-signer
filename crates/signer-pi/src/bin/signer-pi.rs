@@ -21,7 +21,7 @@ mod linux {
     use signer_pi::buttons::GpioButtons;
     use signer_pi::display::{find_framebuffer, FbDisplay};
     use signer_pi::flow::{review_stick, Decision};
-    use signer_pi::usb::PiUsb;
+    use signer_pi::usb::{find_stick, PiUsb, STICK_REMOVED};
     use std::path::{Path, PathBuf};
 
     const SYSFS: &str = "/sys/class/graphics";
@@ -111,7 +111,19 @@ mod linux {
         hal.show_message("Insert USB stick")?;
         usb.wait_insert()?;
         hal.show_message("Reading USB stick")?;
-        let outcome = match review_stick(hal, usb) {
+        // Pulling the stick out ends the review at once.
+        hal.buttons.set_abort(Some(Box::new(|| {
+            find_stick(Path::new("/sys/block"))
+                .is_none()
+                .then(|| signer_hal::HalError::Usb(STICK_REMOVED.into()))
+        })));
+        let result = review_stick(hal, usb);
+        hal.buttons.set_abort(None);
+        let outcome = match result {
+            Err(e) if e.to_string().contains(STICK_REMOVED) => {
+                hal.show_message("USB stick removed. Nothing was signed.")?;
+                return Ok(());
+            }
             Ok(Decision::Approved) => {
                 "Approved. Signing is not available yet: nothing was signed.".to_string()
             }

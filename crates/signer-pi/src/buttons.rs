@@ -118,20 +118,27 @@ pub fn wait_fresh<S: EdgeSource>(
 }
 
 #[cfg(target_os = "linux")]
-pub use gpio::GpioButtons;
+pub use gpio::{Abort, GpioButtons};
 
 #[cfg(target_os = "linux")]
 mod gpio {
     use super::{wait_with_repeat, EdgeSource, Held, DEBOUNCE, LINES};
+
+    /// How often a wait checks its abort condition.
+    const ABORT_POLL: std::time::Duration = std::time::Duration::from_millis(200);
     use gpiocdev::line::{Bias, EdgeDetection, Value, Values};
     use gpiocdev::Request;
     use signer_hal::{ButtonEvent, HalError};
 
     /// The mapped controls, requested as pulled-up inputs that report
     /// debounced falling edges.
+    /// Checked while waiting for a press; an error ends the wait.
+    pub type Abort = Box<dyn FnMut() -> Option<HalError>>;
+
     pub struct GpioButtons {
         request: Request,
         held: Option<Held>,
+        abort: Option<Abort>,
     }
 
     impl GpioButtons {
@@ -149,7 +156,14 @@ mod gpio {
             Ok(Self {
                 request,
                 held: None,
+                abort: None,
             })
+        }
+
+        /// While set, `abort` is checked about five times a second during
+        /// a wait, and its error ends the wait: e.g. the stick was pulled.
+        pub fn set_abort(&mut self, abort: Option<Abort>) {
+            self.abort = abort;
         }
     }
 
@@ -161,10 +175,19 @@ mod gpio {
         }
 
         fn next(&mut self) -> Result<u32, HalError> {
-            self.request
-                .read_edge_event()
-                .map(|e| e.offset)
-                .map_err(|e| HalError::Button(e.to_string()))
+            let err = |e: gpiocdev::Error| HalError::Button(e.to_string());
+            loop {
+                if let Some(error) = self.abort.as_mut().and_then(|check| check()) {
+                    return Err(error);
+                }
+                if self.request.wait_edge_event(ABORT_POLL).map_err(err)? {
+                    return self
+                        .request
+                        .read_edge_event()
+                        .map(|e| e.offset)
+                        .map_err(err);
+                }
+            }
         }
 
         fn pressed(&mut self, line: u32) -> Result<bool, HalError> {

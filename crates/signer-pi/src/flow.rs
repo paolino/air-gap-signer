@@ -218,6 +218,37 @@ mod tests {
     }
 
     #[test]
+    fn pulling_the_stick_mid_review_ends_it_with_nothing_decided() {
+        struct Pulled(Hal);
+        impl Display for Pulled {
+            fn clear(&mut self) -> Result<(), HalError> {
+                self.0.clear()
+            }
+            fn show_message(&mut self, t: &str) -> Result<(), HalError> {
+                self.0.show_message(t)
+            }
+            fn show_lines(&mut self, l: &[DisplayLine], o: usize) -> Result<(), HalError> {
+                self.0.show_lines(l, o)
+            }
+            fn text_grid(&self) -> (usize, usize) {
+                self.0.text_grid()
+            }
+            fn show_review(&mut self, v: &View) -> Result<(), HalError> {
+                self.0.show_review(v)
+            }
+        }
+        impl Buttons for Pulled {
+            fn wait_event(&mut self) -> Result<ButtonEvent, HalError> {
+                Err(HalError::Usb(crate::usb::STICK_REMOVED.into()))
+            }
+        }
+        let mut hal = Pulled(Hal::default());
+        let mut usb = stick(b"hi", echo_hex(), spec("x"));
+        let err = review_stick(&mut hal, &mut usb).expect_err("no decision");
+        assert!(err.to_string().contains(crate::usb::STICK_REMOVED), "{err}");
+    }
+
+    #[test]
     fn reject_is_a_decision_too() {
         let mut hal = Hal {
             presses: VecDeque::from([ButtonEvent::Reject]),

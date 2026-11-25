@@ -18,6 +18,9 @@ pub const PAYLOAD_MAX: u64 = 1 << 20;
 pub const INTERPRETER_MAX: u64 = 8 << 20;
 pub const SPEC_MAX: u64 = 64 << 10;
 
+/// The error a review ends with when the stick is pulled out mid-way.
+pub const STICK_REMOVED: &str = "the USB stick was removed";
+
 /// The only filesystems a stick may carry.
 pub const FILESYSTEMS: [&str; 2] = ["vfat", "exfat"];
 
