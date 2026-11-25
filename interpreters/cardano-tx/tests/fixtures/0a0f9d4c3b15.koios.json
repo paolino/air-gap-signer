@@ -1,0 +1,57 @@
+{
+ "tx_hash": "0a0f9d4c3b15dd883fec701867cf0a59193e57d71444f6245f79e9972c800fe2",
+ "fee": "327115",
+ "invalid_before": null,
+ "invalid_after": "204055974",
+ "inputs": [
+  "a358f850e44ef3a79bb20f2ee0fbb0d157a2efd643ec041343fdfb0901bd6d12#1",
+  "4ef81495e5f2bbaed62268416cf255ba45986a384b275d1220303893df78e763#4"
+ ],
+ "outputs": [
+  {
+   "index": 0,
+   "address": "addr1qxkmr0m22xeqludcg5rjdmecjxasu9fat0680qehtcsnftaadgykewa9ufvegeuca9yyq03d9v7ea2y2zthgu7hfgjtsddp6gr",
+   "lovelace": "1859390",
+   "assets": [
+    [
+     "d195ca7db29f0f13a00cac7fca70426ff60bad4e1e87d3757fae8484",
+     "68764d494e",
+     "81063"
+    ]
+   ]
+  },
+  {
+   "index": 1,
+   "address": "addr1wxc45xspppp73takl93mq029905ptdfnmtgv6g7cr8pdyqgvks3s8",
+   "lovelace": "1913640",
+   "assets": [
+    [
+     "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c",
+     "9c5c5cbc113be07ff0bf1fe31ffb204f9589bb89c87819076dc8269406afb10f",
+     "6989604557"
+    ]
+   ]
+  },
+  {
+   "index": 2,
+   "address": "addr1qx783cnua44dt5akhj59566ga6j7xsa60csqs4s03kegfv7g8ml5339ce47aqhl5pmrp9tjtt23jvalcr9cs3zk4kr8s5gapxa",
+   "lovelace": "349332773",
+   "assets": []
+  },
+  {
+   "index": 3,
+   "address": "addr1qx783cnua44dt5akhj59566ga6j7xsa60csqs4s03kegfv7g8ml5339ce47aqhl5pmrp9tjtt23jvalcr9cs3zk4kr8s5gapxa",
+   "lovelace": "3562917",
+   "assets": [
+    [
+     "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c",
+     "9c5c5cbc113be07ff0bf1fe31ffb204f9589bb89c87819076dc8269406afb10f",
+     "6989604557"
+    ]
+   ]
+  }
+ ],
+ "withdrawals": 0,
+ "certs": [],
+ "mint": 1
+}

@@ -1,0 +1,26 @@
+{
+ "tx_hash": "46581875a39e583fede681e7c5be8eb275bb95017c67cd048ce5906214837ccf",
+ "fee": "178566",
+ "invalid_before": null,
+ "invalid_after": "204046183",
+ "inputs": [
+  "e47479dc18eb4f5c9245831fdd70c95b2c72fd8fbac5ea76625017aafe4396b8#1"
+ ],
+ "outputs": [
+  {
+   "index": 0,
+   "address": "addr1q94rqj44crfpqe46a4upmdhlgs5hz268s9450ahmne08r3txu2mg0n3q8mfzprusrhcdwa8ppjt5zqg8pmndwnmj6m6qtehggj",
+   "lovelace": "78041107",
+   "assets": []
+  },
+  {
+   "index": 1,
+   "address": "addr1v8wfpcg4qfhmnzprzysj6j9c53u5j56j8rvhyjp08s53s6g07rfjm",
+   "lovelace": "6520541472",
+   "assets": []
+  }
+ ],
+ "withdrawals": 0,
+ "certs": [],
+ "mint": 0
+}

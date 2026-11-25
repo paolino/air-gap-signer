@@ -1,0 +1,20 @@
+{
+ "tx_hash": "9d9da28fdba6faadafd73f8e246ab1e05c27514d5b35cc1c6c5bd4f69b5cb925",
+ "fee": "700000",
+ "invalid_before": null,
+ "invalid_after": null,
+ "inputs": [
+  "cbf4df2ffcb3cc6502122efc742cf83d800de0231263281b3d7f1cc9f0d91cd0#0"
+ ],
+ "outputs": [
+  {
+   "index": 0,
+   "address": "addr1vxhyxumuh98fxf9y4d4z98q34lmtpgqaxxu92thp2ynvnrcf38k4w",
+   "lovelace": "1005474126",
+   "assets": []
+  }
+ ],
+ "withdrawals": 0,
+ "certs": [],
+ "mint": 0
+}

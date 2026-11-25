@@ -7,6 +7,7 @@ members = [
     "crates/signer-pi",
     "crates/usb-pack",
     "interpreters/echo-hex",
+    "interpreters/cardano-tx",
 ]
 
 [workspace.package]

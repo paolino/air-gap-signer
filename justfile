@@ -7,7 +7,7 @@ build:
 
 # Build WASM interpreters
 build-wasm:
-    cargo build -p echo-hex --target wasm32-unknown-unknown --release
+    cargo build -p echo-hex -p cardano-tx --target wasm32-unknown-unknown --release
 
 # Cross-compile the Raspberry Pi binaries (static aarch64)
 build-pi:
