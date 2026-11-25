@@ -10,6 +10,8 @@ use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::path::{Path, PathBuf};
 
 const SIZE: usize = 240;
+/// Width of the cursor stripe at the right edge, in pixels.
+const CURSOR_WIDTH: usize = 4;
 
 /// Find the framebuffer device whose driver name is `name` by scanning
 /// `<sysfs>/fb*/name`. Linux numbers framebuffers in registration order,
@@ -60,8 +62,8 @@ pub struct FbDisplay {
     accent: Rgb,
     /// Rows that still need attention before Confirm counts.
     pending: Rgb,
-    /// Background of the review cursor row.
-    selected: Rgb,
+    /// The cursor stripe.
+    cursor: Rgb,
 }
 
 impl FbDisplay {
@@ -107,7 +109,7 @@ impl FbDisplay {
             bg: Rgb(0, 0, 0),
             accent: Rgb(250, 190, 40),
             pending: Rgb(255, 110, 100),
-            selected: Rgb(235, 235, 235),
+            cursor: Rgb(250, 190, 40),
         }
     }
 
@@ -188,24 +190,19 @@ impl signer_hal::Display for FbDisplay {
                 let h = self.font.line_height;
                 for (i, row) in rows.iter().enumerate() {
                     let y = (i + 1) * h;
-                    let bg = if row.selected { self.selected } else { self.bg };
-                    if row.selected {
-                        self.frame.fill_rect(0, y, SIZE, h, bg);
-                    }
                     let font = if row.expandable {
                         &self.bold
                     } else {
                         &self.font
                     };
-                    // On the light cursor bar, text is black, or dark red
-                    // while it still has to be seen.
-                    let colour = match (row.selected, row.pending) {
-                        (true, true) => Rgb(170, 0, 0),
-                        (true, false) => Rgb(0, 0, 0),
-                        (false, true) => self.pending,
-                        (false, false) => self.fg,
-                    };
-                    self.frame.draw_text(font, &row.text, 0, y, colour, bg);
+                    let colour = if row.pending { self.pending } else { self.fg };
+                    self.frame.draw_text(font, &row.text, 0, y, colour, self.bg);
+                    if row.selected {
+                        // The cursor: a stripe in the right margin, past the
+                        // last column, so it never covers text.
+                        let x = SIZE - CURSOR_WIDTH;
+                        self.frame.fill_rect(x, y, CURSOR_WIDTH, h, self.cursor);
+                    }
                 }
             }
             View::Detail { header, rows } => {
@@ -282,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn review_cursor_row_is_highlighted() {
+    fn review_cursor_row_has_the_edge_stripe() {
         use signer_core::review::Row;
         use signer_hal::Display;
         let dir = tempfile::tempdir().unwrap();
@@ -305,13 +302,18 @@ mod tests {
             u16::from_le_bytes([bytes[2 * (y * SIZE + x)], bytes[2 * (y * SIZE + x) + 1]])
         };
         let h = d.font.line_height;
-        let selected = d.selected.to_565();
+        let cursor = d.cursor.to_565();
         assert_eq!(
             at(SIZE - 1, 2 * h + 1),
-            selected,
-            "row 2 (cursor) is highlighted"
+            cursor,
+            "row 2 (cursor) has the stripe"
         );
-        assert_eq!(at(SIZE - 1, h + 1), d.bg.to_565(), "row 1 is not");
+        assert_eq!(at(SIZE - 1, h + 1), d.bg.to_565(), "row 1 has not");
+        assert_eq!(
+            at(SIZE - CURSOR_WIDTH - 1, 2 * h + 1),
+            d.bg.to_565(),
+            "the stripe is only at the edge"
+        );
     }
 
     #[test]

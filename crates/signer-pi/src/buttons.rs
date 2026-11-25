@@ -37,6 +37,50 @@ pub trait EdgeSource {
     fn next(&mut self) -> Result<u32, HalError>;
     /// Whether every control is up right now.
     fn released(&mut self) -> Result<bool, HalError>;
+    /// Whether the control on `line` is down right now.
+    fn pressed(&mut self, line: u32) -> Result<bool, HalError>;
+}
+
+/// Holding up or down repeats: after `REPEAT_DELAY`, then every
+/// `REPEAT_EVERY`. Nothing else repeats, so a held button can never
+/// confirm, reject, open or go back by itself.
+pub const REPEAT_DELAY: Duration = Duration::from_millis(400);
+pub const REPEAT_EVERY: Duration = Duration::from_millis(120);
+
+/// The press just returned, and whether it was the first of a hold.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Held {
+    pub event: ButtonEvent,
+    pub first: bool,
+}
+
+/// The next press: a repeat of a held up/down, or else a fresh press
+/// (`wait_fresh`).
+pub fn wait_with_repeat<S: EdgeSource>(
+    source: &mut S,
+    held: &mut Option<Held>,
+    mut sleep: impl FnMut(&mut S, Duration),
+) -> Result<ButtonEvent, HalError> {
+    if let Some(Held { event, first }) = *held {
+        let line = match event {
+            ButtonEvent::Up => Some(17),
+            ButtonEvent::Down => Some(22),
+            _ => None,
+        };
+        if let Some(line) = line {
+            sleep(source, if first { REPEAT_DELAY } else { REPEAT_EVERY });
+            if source.pressed(line)? {
+                *held = Some(Held {
+                    event,
+                    first: false,
+                });
+                return Ok(event);
+            }
+        }
+    }
+    let event = wait_fresh(source, sleep)?;
+    *held = Some(Held { event, first: true });
+    Ok(event)
 }
 
 /// Wait for a press that starts after this call.
@@ -70,7 +114,7 @@ pub use gpio::GpioButtons;
 
 #[cfg(target_os = "linux")]
 mod gpio {
-    use super::{wait_fresh, EdgeSource, DEBOUNCE, LINES};
+    use super::{wait_with_repeat, EdgeSource, Held, DEBOUNCE, LINES};
     use gpiocdev::line::{Bias, EdgeDetection, Value, Values};
     use gpiocdev::Request;
     use signer_hal::{ButtonEvent, HalError};
@@ -79,6 +123,7 @@ mod gpio {
     /// debounced falling edges.
     pub struct GpioButtons {
         request: Request,
+        held: Option<Held>,
     }
 
     impl GpioButtons {
@@ -93,7 +138,10 @@ mod gpio {
                 .with_debounce_period(DEBOUNCE)
                 .request()
                 .map_err(|e| HalError::Button(format!("{chip}: {e}")))?;
-            Ok(Self { request })
+            Ok(Self {
+                request,
+                held: None,
+            })
         }
     }
 
@@ -111,6 +159,14 @@ mod gpio {
                 .map_err(|e| HalError::Button(e.to_string()))
         }
 
+        fn pressed(&mut self, line: u32) -> Result<bool, HalError> {
+            let mut values = Values::from_offsets(&[line]);
+            self.request
+                .values(&mut values)
+                .map_err(|e| HalError::Button(e.to_string()))?;
+            Ok(values.get(line) == Some(Value::Inactive))
+        }
+
         /// The lines are pulled up, so an untouched control reads high.
         fn released(&mut self) -> Result<bool, HalError> {
             let mut values = Values::from_offsets(&LINES);
@@ -123,7 +179,10 @@ mod gpio {
 
     impl signer_hal::Buttons for GpioButtons {
         fn wait_event(&mut self) -> Result<ButtonEvent, HalError> {
-            wait_fresh(self, |_, d| std::thread::sleep(d))
+            let mut held = self.held.take();
+            let event = wait_with_repeat(self, &mut held, |_, d| std::thread::sleep(d));
+            self.held = held;
+            event
         }
     }
 }
@@ -156,6 +215,8 @@ mod tests {
     /// Edges queued before the wait, edges that arrive during it, and how
     /// many more polls a control stays held.
     struct Fake {
+        /// Answers to successive `pressed` checks: the line held then.
+        holding: VecDeque<u32>,
         queued: VecDeque<u32>,
         arriving: VecDeque<u32>,
         held_for: usize,
@@ -176,10 +237,15 @@ mod tests {
         fn released(&mut self) -> Result<bool, HalError> {
             Ok(self.held_for == 0)
         }
+
+        fn pressed(&mut self, line: u32) -> Result<bool, HalError> {
+            Ok(self.holding.pop_front().is_some_and(|l| l == line))
+        }
     }
 
     fn fake(queued: &[u32], arriving: &[u32], held_for: usize) -> Fake {
         Fake {
+            holding: VecDeque::new(),
             queued: queued.iter().copied().collect(),
             arriving: arriving.iter().copied().collect(),
             held_for,
@@ -235,5 +301,60 @@ mod tests {
     fn unmapped_lines_are_skipped() {
         let mut src = fake(&[], &[4, 9, 17], 0);
         assert_eq!(fresh(&mut src, |_, _| {}), Some(ButtonEvent::Up));
+    }
+
+    #[test]
+    fn holding_down_repeats_after_a_delay_then_faster() {
+        let mut src = fake(&[], &[22, 6], 0);
+        src.holding = VecDeque::from([22, 22]); // still held at two checks, then up
+        let mut held = None;
+        let mut pauses = Vec::new();
+        let mut events = Vec::new();
+        for _ in 0..4 {
+            events.push(wait_with_repeat(&mut src, &mut held, |_, d| pauses.push(d)).unwrap());
+        }
+        use ButtonEvent::{Down, Reject};
+        assert_eq!(
+            events,
+            vec![Down, Down, Down, Reject],
+            "two repeats, then a fresh press"
+        );
+        assert!(
+            pauses.contains(&REPEAT_DELAY) && pauses.contains(&REPEAT_EVERY),
+            "{pauses:?}"
+        );
+        let delay = pauses.iter().position(|&d| d == REPEAT_DELAY).unwrap();
+        let every = pauses.iter().position(|&d| d == REPEAT_EVERY).unwrap();
+        assert!(delay < every, "the first repeat waits longer: {pauses:?}");
+    }
+
+    #[test]
+    fn a_held_confirm_never_repeats() {
+        let mut src = fake(&[], &[5, 6], 0);
+        src.holding = VecDeque::from([5, 5, 5]);
+        let mut held = None;
+        assert_eq!(
+            wait_with_repeat(&mut src, &mut held, |_, _| {}).ok(),
+            Some(ButtonEvent::Confirm)
+        );
+        assert_eq!(
+            wait_with_repeat(&mut src, &mut held, |_, _| {}).ok(),
+            Some(ButtonEvent::Reject),
+            "the next answer is a fresh press, not a repeated #5"
+        );
+    }
+
+    #[test]
+    fn open_and_back_never_repeat() {
+        for line in [23, 27] {
+            let mut src = fake(&[], &[line, 17], 0);
+            src.holding = VecDeque::from([line, line]);
+            let mut held = None;
+            wait_with_repeat(&mut src, &mut held, |_, _| {}).unwrap();
+            assert_eq!(
+                wait_with_repeat(&mut src, &mut held, |_, _| {}).ok(),
+                Some(ButtonEvent::Up)
+            );
+        }
     }
 }
