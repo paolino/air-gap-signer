@@ -128,7 +128,9 @@ pub struct Review {
     /// How many branches were accepted without being read.
     waived_branches: usize,
     /// The screens left behind by going right, as `(at, cursor)`.
-    back: Vec<(usize, usize)>,
+    back: Vec<(usize, usize, usize)>,
+    /// First row of `tree()` on screen.
+    top: usize,
     /// `Some(page)` while the selected entry is shown in full.
     detail: Option<usize>,
     /// Entries never on screen.
@@ -168,6 +170,7 @@ impl Review {
             waived: vec![false; nodes_len],
             waived_branches: 0,
             back: Vec::new(),
+            top: 0,
             detail: None,
             unseen,
             unopened,
@@ -229,9 +232,10 @@ impl Review {
                 }
             }
             (None, ButtonEvent::Back) => {
-                if let Some((at, cursor)) = self.back.pop() {
+                if let Some((at, cursor, top)) = self.back.pop() {
                     self.at = at;
                     self.cursor = cursor;
+                    self.top = top;
                 }
             }
             // #5 on a branch that still hides something offers to accept
@@ -332,7 +336,8 @@ impl Review {
     }
 
     fn enter(&mut self, group: usize) {
-        self.back.push((self.at, self.cursor));
+        self.back.push((self.at, self.cursor, self.top));
+        self.top = 0;
         self.at = group;
         self.cursor = self.first_stop();
     }
@@ -406,11 +411,28 @@ impl Review {
 
     /// First row of the window, which keeps the cursor on screen.
     fn top(&self) -> usize {
-        (self.cursor + 1).saturating_sub(self.visible())
+        self.top
+    }
+
+    /// Scroll only when the cursor would leave the window; scrolling up,
+    /// keep the headings just above the cursor in view.
+    fn follow(&mut self) {
+        if self.cursor < self.top {
+            self.top = self.cursor;
+            while self.top > 0
+                && !self.stops(self.top - 1)
+                && self.cursor - (self.top - 1) < self.visible()
+            {
+                self.top -= 1;
+            }
+        } else if self.cursor >= self.top + self.visible() {
+            self.top = self.cursor + 1 - self.visible();
+        }
     }
 
     /// Every entry on screen is seen; one shown whole needs no opening.
     fn mark_shown(&mut self) {
+        self.follow();
         let shown: Vec<(usize, bool)> = self
             .window()
             .map(|(_, (node, depth))| (node, self.entry_text(node, depth).1))
@@ -1145,5 +1167,45 @@ mod tests {
         assert_ne!(detail(&r).0, first);
         r.handle(ButtonEvent::UpHeld);
         assert_eq!(detail(&r).0, first);
+    }
+
+    #[test]
+    fn moving_up_from_the_bottom_moves_the_cursor_not_the_list() {
+        let lines: Vec<_> = (0..30)
+            .map(|i| DisplayLine {
+                indent: 1,
+                key: Some("k".into()),
+                value: i.to_string(),
+            })
+            .collect();
+        let mut r = review(lines);
+        r.handle(ButtonEvent::Up); // wraps to the last row
+        let (_, before, sel) = level(&r);
+        assert_eq!(before[sel], "k: 29");
+        r.handle(ButtonEvent::Up);
+        r.handle(ButtonEvent::Up);
+        let (_, after, sel) = level(&r);
+        assert_eq!(
+            after, before,
+            "the window stays while the cursor is inside it"
+        );
+        assert_eq!(after[sel], "k: 27");
+    }
+
+    #[test]
+    fn scrolling_up_into_a_group_shows_its_heading() {
+        let lines = json_to_lines(&serde_json::json!({
+            "a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6", "g": "7", "h": "8",
+            "list": ["x", "y"],
+            "z": "9"
+        }));
+        let mut r = review(lines);
+        r.handle(ButtonEvent::Up); // wraps to the bottom: z
+        for _ in 0..2 {
+            r.handle(ButtonEvent::Up); // _1, then _0 of list
+        }
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "  _0: x");
+        assert_eq!(rows[sel - 1], "list", "the heading above stays in view");
     }
 }
