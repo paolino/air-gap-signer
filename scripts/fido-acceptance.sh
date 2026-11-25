@@ -50,6 +50,9 @@ echo "  touch: enrol"; id=$("$probe" enrol)
 echo "  touch: secret (signer)"; ours=$("$probe" secret "$id" "$salt")
 echo "  touch: secret (libfido2)"; theirs=$(libfido2_secret "$id")
 check "signer credential, same secret" "$ours" "$theirs"
+# The signer's credentials live on the token (resident): remove ours.
+echo "  cleanup: delete the signer's credential (libfido2)"
+fido2-token -D -i "$(echo "$id" | b64)" "$dev"
 
 echo "2/2 credential made by libfido2"
 echo "  touch: enrol (fido2-cred)"
