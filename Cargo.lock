@@ -1840,6 +1840,7 @@ dependencies = [
  "cbc",
  "ciborium",
  "clap",
+ "ed25519-dalek",
  "embedded-hal",
  "fontdue",
  "gpiocdev",

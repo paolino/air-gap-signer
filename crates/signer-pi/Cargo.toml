@@ -22,6 +22,10 @@ name = "fido-probe"
 path = "src/bin/fido-probe.rs"
 
 [[bin]]
+name = "se051-keys"
+path = "src/bin/se051-keys.rs"
+
+[[bin]]
 name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
@@ -31,6 +35,7 @@ signer-hal = { path = "../signer-hal" }
 fontdue = "0.9"
 serde_json.workspace = true
 hex.workspace = true
+ed25519-dalek.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 rand.workspace = true
