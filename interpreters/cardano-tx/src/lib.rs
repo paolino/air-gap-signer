@@ -22,11 +22,12 @@ pub fn describe(cbor: &[u8]) -> Result<Value, String> {
         );
     }
     out.insert("fee".into(), json!(ada(tx.fee().unwrap_or(0))));
+    let network = network(&tx);
     if let Some(slot) = tx.validity_start() {
-        out.insert("valid_from_slot".into(), json!(slot));
+        out.insert("valid_from".into(), json!(validity(slot, network)));
     }
     if let Some(slot) = tx.ttl() {
-        out.insert("valid_until_slot".into(), json!(slot));
+        out.insert("valid_until".into(), json!(validity(slot, network)));
     }
     out.insert("inputs".into(), inputs(&tx.inputs()));
     out.insert(
@@ -177,5 +178,103 @@ mod abi {
         let ptr = out.as_mut_ptr();
         core::mem::forget(out);
         ptr as i32
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Network {
+    Mainnet,
+    Testnet,
+}
+
+/// The network the outputs pay to: mainnet only if every Shelley-era
+/// output address is a mainnet one.
+fn network(tx: &MultiEraTx) -> Option<Network> {
+    let mut seen = None;
+    for o in tx.outputs() {
+        let net = match o.address() {
+            Ok(Address::Shelley(a)) => a.network(),
+            Ok(Address::Stake(a)) => a.network(),
+            _ => continue,
+        };
+        let net = if net.is_mainnet() {
+            Network::Mainnet
+        } else {
+            Network::Testnet
+        };
+        if seen.is_some_and(|s| s != net) {
+            return Some(Network::Testnet);
+        }
+        seen = Some(net);
+    }
+    seen
+}
+
+/// A validity bound as `2026-11-25 15:57:45 UTC (slot 204055974)`, or
+/// just `slot N` when the time cannot be known for sure.
+fn validity(slot: u64, network: Option<Network>) -> String {
+    match slot_time(slot, network) {
+        Some(t) => format!("{t} (slot {slot})"),
+        None => format!("slot {slot}"),
+    }
+}
+
+/// The UTC time of a mainnet Shelley-era slot (one-second slots from
+/// slot 4 492 800 at 2020-07-29 21:44:51 UTC). Testnets are left out: a
+/// test address does not say whether it is preprod or preview, whose
+/// clocks differ.
+fn slot_time(slot: u64, network: Option<Network>) -> Option<String> {
+    const SHELLEY_START_SLOT: u64 = 4_492_800;
+    const UNIX_AT_SLOT_ZERO: u64 = 1_591_566_291;
+    (network == Some(Network::Mainnet) && slot >= SHELLEY_START_SLOT)
+        .then(|| utc(slot + UNIX_AT_SLOT_ZERO))
+}
+
+/// Unix seconds as `YYYY-MM-DD hh:mm:ss UTC` (proleptic Gregorian).
+fn utc(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    // Howard Hinnant's civil_from_days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02} UTC",
+        rem / 3600,
+        rem / 60 % 60,
+        rem % 60
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dates_from_unix_seconds() {
+        assert_eq!(utc(0), "1970-01-01 00:00:00 UTC");
+        assert_eq!(utc(1596059091), "2020-07-29 21:44:51 UTC");
+        assert_eq!(utc(951782400), "2000-02-29 00:00:00 UTC");
+        assert_eq!(utc(4102444799), "2099-12-31 23:59:59 UTC");
+    }
+
+    #[test]
+    fn shelley_start_is_the_known_date() {
+        assert_eq!(
+            slot_time(4_492_800, Some(Network::Mainnet)).unwrap(),
+            "2020-07-29 21:44:51 UTC"
+        );
+        assert_eq!(
+            slot_time(1, Some(Network::Testnet)),
+            None,
+            "testnets are ambiguous"
+        );
+        assert_eq!(slot_time(1, None), None);
     }
 }

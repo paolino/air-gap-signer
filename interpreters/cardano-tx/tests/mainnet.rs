@@ -151,3 +151,19 @@ fn fields_come_in_reading_order() {
         "{keys:?}"
     );
 }
+
+#[test]
+fn mainnet_validity_is_shown_as_a_date_with_its_slot() {
+    // Expected value computed independently: Python's datetime on
+    // slot + 1591566291 (mainnet Shelley-era slot to Unix time).
+    let (_, cbor, _) = fixtures()
+        .into_iter()
+        .find(|f| f.0 == "0a0f9d4c3b15")
+        .unwrap();
+    let tx = describe(&cbor).unwrap();
+    assert_eq!(
+        tx["valid_until"],
+        "2026-11-25 15:57:45 UTC (slot 204055974)"
+    );
+    assert!(tx.get("valid_until_slot").is_none());
+}
