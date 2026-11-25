@@ -72,7 +72,7 @@ validity_e…: 87654321
 
 | Control | In a level | In a value |
 |---|---|---|
-| joystick up / down | move the cursor to the previous / next field or bold group, skipping headings; wraps around at both ends; held, it repeats | previous / next page |
+| joystick up / down | move the cursor to the previous / next field or bold group, skipping headings; a press at the last or first row wraps around; held, it repeats and stops there | previous / next page |
 | joystick right | on a bold group: go into it; on a value or a cut name: show it in full; on a heading: nothing | from a group's full name: go into it |
 | joystick left | back to the screen you came from, onto the row you left | back to the level; in the accept question: don't accept |
 | button #5 | on a bold group that still hides something: ask to accept it without reading; elsewhere: approve, once nothing is left to see | in the accept question: accept |

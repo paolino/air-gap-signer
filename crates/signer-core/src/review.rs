@@ -20,6 +20,11 @@ pub enum ButtonEvent {
     Reject,
     Up,
     Down,
+    /// Up or down repeated while the joystick is held: like `Up` and
+    /// `Down`, but the cursor stops at the first and last row instead of
+    /// wrapping around.
+    UpHeld,
+    DownHeld,
     /// Enter the selected group, or show the selected value in full
     /// (joystick right).
     Open,
@@ -196,8 +201,10 @@ impl Review {
         let entries = self.tree().len();
         match (self.detail, event) {
             (_, ButtonEvent::Reject) => return Outcome::Rejected,
-            (Some(page), ButtonEvent::Up) => self.show_page(page.saturating_sub(1)),
-            (Some(page), ButtonEvent::Down) => {
+            (Some(page), ButtonEvent::Up | ButtonEvent::UpHeld) => {
+                self.show_page(page.saturating_sub(1))
+            }
+            (Some(page), ButtonEvent::Down | ButtonEvent::DownHeld) => {
                 self.show_page((page + 1).min(self.pages().len() - 1))
             }
             (Some(_), ButtonEvent::Back) => self.detail = None,
@@ -208,6 +215,8 @@ impl Review {
             (Some(_), _) => {}
             (None, ButtonEvent::Up) => self.cursor = self.step(entries - 1),
             (None, ButtonEvent::Down) => self.cursor = self.step(1),
+            (None, ButtonEvent::UpHeld) => self.cursor = self.step_to_end(false),
+            (None, ButtonEvent::DownHeld) => self.cursor = self.step_to_end(true),
             (None, ButtonEvent::Open) => {
                 let node = self.selected();
                 // A value, or any entry whose name is cut, opens in full
@@ -337,6 +346,18 @@ impl Review {
 
     fn first_stop(&self) -> usize {
         (0..self.tree().len()).find(|&i| self.stops(i)).unwrap_or(0)
+    }
+
+    /// The next row the cursor stops on, going down or up, staying put at
+    /// the last or first such row instead of wrapping.
+    fn step_to_end(&self, down: bool) -> usize {
+        let stops = |i: &usize| self.stops(*i);
+        let next = if down {
+            (self.cursor + 1..self.tree().len()).find(stops)
+        } else {
+            (0..self.cursor).rev().find(stops)
+        };
+        next.unwrap_or(self.cursor)
     }
 
     /// The next row the cursor stops on, moving by `delta` (1 down,
@@ -1089,5 +1110,40 @@ mod tests {
             "nothing to waive"
         );
         assert_eq!(r.remaining(), before);
+    }
+
+    #[test]
+    fn holding_stops_at_the_ends_and_a_fresh_press_wraps() {
+        let mut r = review(tx());
+        for _ in 0..10 {
+            r.handle(ButtonEvent::DownHeld);
+        }
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "  _1", "held: stops on the last row");
+        r.handle(ButtonEvent::Down);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "fee: 171485", "a fresh press wraps");
+        r.handle(ButtonEvent::UpHeld);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "fee: 171485", "held: stops on the first row");
+        r.handle(ButtonEvent::Up);
+        let (_, rows, sel) = level(&r);
+        assert_eq!(rows[sel], "  _1", "a fresh press wraps");
+    }
+
+    #[test]
+    fn held_up_and_down_turn_pages_like_presses() {
+        let value = "x".repeat(500);
+        let mut r = review(vec![DisplayLine {
+            indent: 1,
+            key: Some("d".into()),
+            value,
+        }]);
+        r.handle(ButtonEvent::Open);
+        let first = detail(&r).0;
+        r.handle(ButtonEvent::DownHeld);
+        assert_ne!(detail(&r).0, first);
+        r.handle(ButtonEvent::UpHeld);
+        assert_eq!(detail(&r).0, first);
     }
 }

@@ -82,7 +82,11 @@ pub fn wait_with_repeat<S: EdgeSource>(
                     event,
                     first: false,
                 });
-                return Ok(event);
+                // Repeats are reported as such: they stop at the ends.
+                return Ok(match event {
+                    ButtonEvent::Up => ButtonEvent::UpHeld,
+                    _ => ButtonEvent::DownHeld,
+                });
             }
         }
     }
@@ -358,11 +362,11 @@ mod tests {
             events.push(wait_with_repeat(&mut src, &mut held, |_, d| total += d).unwrap());
             waited.push(total);
         }
-        use ButtonEvent::{Down, Reject};
+        use ButtonEvent::{Down, DownHeld, Reject};
         assert_eq!(
             events,
-            vec![Down, Down, Down, Reject],
-            "two repeats, then a fresh press"
+            vec![Down, DownHeld, DownHeld, Reject],
+            "two held repeats, then a fresh press"
         );
         assert!(
             waited[1] >= REPEAT_DELAY,
