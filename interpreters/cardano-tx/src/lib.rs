@@ -10,6 +10,43 @@ use serde_json::{json, Map, Value};
 /// The review JSON for a transaction's CBOR.
 pub fn describe(cbor: &[u8]) -> Result<Value, String> {
     let tx = MultiEraTx::decode(cbor).map_err(|e| format!("not a Cardano transaction: {e}"))?;
+    describe_tx(&tx)
+}
+
+/// Decode a full Conway transaction and retain the ledger's original body bytes.
+pub fn decode_conway(
+    cbor: &[u8],
+) -> Result<(pallas_primitives::conway::Tx<'_>, std::ops::Range<usize>), String> {
+    use pallas_codec::minicbor::Decoder;
+    let mut decoder = Decoder::new(cbor);
+    let tx: pallas_primitives::conway::Tx = decoder
+        .decode()
+        .map_err(|e| format!("Conway transaction: {e}"))?;
+    if decoder.position() != cbor.len() {
+        return Err("unexpected bytes after Cardano transaction".into());
+    }
+    let mut header = Decoder::new(cbor);
+    header.array().map_err(|e| e.to_string())?;
+    let start = header.position();
+    let body = tx.transaction_body.raw_cbor();
+    let range = start..start + body.len();
+    if cbor.get(range.clone()) != Some(body) {
+        return Err("Cardano body differs from original payload".into());
+    }
+    Ok((tx, range))
+}
+
+/// Derive display fields, byte selection and the ledger transaction ID from one snapshot.
+pub fn conway_preview(cbor: &[u8]) -> Result<(Value, std::ops::Range<usize>, [u8; 32]), String> {
+    let (tx, body) = decode_conway(cbor)?;
+    let tx = MultiEraTx::Conway(Box::new(std::borrow::Cow::Owned(tx)));
+    let digest = *tx.hash();
+    let mut fields = describe_tx(&tx)?;
+    fields["tx_id"] = json!(hex::encode(digest));
+    Ok((fields, body, digest))
+}
+
+fn describe_tx(tx: &MultiEraTx<'_>) -> Result<Value, String> {
     let mut out = Map::new();
     out.insert(
         "era".into(),
@@ -22,7 +59,7 @@ pub fn describe(cbor: &[u8]) -> Result<Value, String> {
         );
     }
     out.insert("fee".into(), json!(ada(tx.fee().unwrap_or(0))));
-    let network = network(&tx);
+    let network = network(tx);
     if let Some(slot) = tx.validity_start() {
         out.insert("valid_from".into(), json!(validity(slot, network)));
     }

@@ -27,7 +27,11 @@ usb-pack \
 For Conway transactions, `--signable cardano-body` accepts raw transaction
 CBOR or the `Tx ConwayEra` text envelope from `cardano-cli`. It writes the full
 transaction CBOR for review and selects the original body bytes for Blake2b-256
-hashing. The resulting digest is the transaction ID. The package itself carries
+hashing. The resulting digest is the transaction ID. Current packages also
+identify the Conway review protocol. For these requests the Pi derives the
+display fields and transaction ID using its installed decoder. It checks the
+requested byte range and algorithm before presenting a read-only preview.
+Earlier packages without the protocol field use the original interpreter path. The package itself carries
 no signing authority. A Cardano witness requires both the payment verification
 key and its signature over that digest.
 

@@ -40,19 +40,50 @@ pub fn review_stick_with_keys<H: Display + Buttons, U: UsbMount>(
     let contents = contents?;
 
     let spec = SigningSpec::from_cbor(&contents.signing_spec_cbor)?;
-    hal.show_message(&spec.label)?;
-
-    let sandbox = Sandbox::new()?;
-    let json = sandbox
-        .load_module(&contents.interpreter_wasm)?
-        .interpret(&contents.payload)?;
-    let lines = json_to_lines(&serde_json::from_str(&json)?);
-    let message = extract_signable(&contents.payload, &spec.signable)?;
-
+    let (fields, message, allowed) = match spec.review_protocol {
+        Some(signer_core::spec::ReviewProtocol::CardanoConway) => {
+            use signer_core::spec::{
+                HashAlgorithm, OutputSpec, SignAlgorithm, Signable, SignableSource,
+            };
+            let (fields, body, digest) = cardano_tx::conway_preview(&contents.payload)?;
+            let expected = Signable::HashThenSign {
+                hash: HashAlgorithm::Blake2b256,
+                source: SignableSource::Range {
+                    offset: body.start,
+                    length: body.len(),
+                },
+            };
+            if spec.signable != expected
+                || spec.algorithm != SignAlgorithm::Ed25519
+                || spec.output != OutputSpec::SignatureOnly
+            {
+                return Err("request differs from the Cardano body signing rules".into());
+            }
+            hal.show_message("Cardano preview only")?;
+            // Recognition, PIN and phone approval must precede a real signing key.
+            (fields, digest.to_vec(), vec![])
+        }
+        None => {
+            hal.show_message(&spec.label)?;
+            let sandbox = Sandbox::new()?;
+            let json = sandbox
+                .load_module(&contents.interpreter_wasm)?
+                .interpret(&contents.payload)?;
+            let message = extract_signable(&contents.payload, &spec.signable)?;
+            (
+                serde_json::from_str(&json)?,
+                message,
+                vec![(spec.key_slot, spec.algorithm)],
+            )
+        }
+    };
     let (cols, rows) = hal.text_grid();
-    // Only the key the request names, with its algorithm, is offered.
-    let allowed = [(spec.key_slot, spec.algorithm)];
-    let mut session = Session::new(Review::new(lines, cols, rows)?, message, &allowed, signer);
+    let mut session = Session::new(
+        Review::new(json_to_lines(&fields), cols, rows)?,
+        message,
+        &allowed,
+        signer,
+    );
     loop {
         hal.show_review(&session.view())?;
         let event = hal.wait_event()?;
@@ -187,6 +218,7 @@ mod tests {
 
     fn spec_signing(label: &str, signable: Signable) -> Vec<u8> {
         SigningSpec {
+            review_protocol: None,
             label: label.into(),
             signable,
             algorithm: SignAlgorithm::Ed25519,
@@ -237,6 +269,48 @@ mod tests {
         key.received
     }
 
+    // Preprod block 5459076. The expected transaction ID comes from the chain.
+    #[test]
+    fn native_cardano_preview_uses_the_ledger_id_and_exposes_no_signing_key() {
+        use signer_core::spec::{HashAlgorithm, ReviewProtocol, SignableSource};
+        let payload = include_bytes!("../tests/fixtures/preprod-49e751bf.cbor");
+        let (fields, body, digest) = cardano_tx::conway_preview(payload).unwrap();
+        let tx_id = "49e751bf0bebce136f08cc72464ec040c5195a276f6e297946b076c90e48ce89";
+        assert_eq!(fields["tx_id"], tx_id);
+        assert_eq!(hex::encode(digest), tx_id);
+        let mut request = SigningSpec::from_cbor(&spec("Host-supplied title")).unwrap();
+        request.review_protocol = Some(ReviewProtocol::CardanoConway);
+        request.signable = Signable::HashThenSign {
+            hash: HashAlgorithm::Blake2b256,
+            source: SignableSource::Range {
+                offset: body.start,
+                length: body.len(),
+            },
+        };
+        let mut hal = Hal {
+            presses: VecDeque::from([ButtonEvent::Mode, ButtonEvent::Confirm]),
+            ..Default::default()
+        };
+        let mut key = OneKey::default();
+        let result = review_stick(
+            &mut hal,
+            &mut stick(payload, vec![], request.to_cbor().unwrap()),
+            &mut key,
+        )
+        .unwrap();
+        assert!(result.is_empty());
+        assert_eq!(hal.messages, ["Cardano preview only"]);
+        assert!(key.received.is_empty());
+        request.signable = Signable::Whole;
+        assert!(review_stick(
+            &mut hal,
+            &mut stick(payload, vec![], request.to_cbor().unwrap()),
+            &mut key
+        )
+        .is_err());
+        assert!(key.received.is_empty());
+    }
+
     #[test]
     fn the_key_signs_exactly_the_bytes_the_request_selects() {
         use signer_core::spec::{HashAlgorithm, SignableSource};
@@ -278,6 +352,7 @@ mod tests {
             ..Default::default()
         };
         let other_slot = SigningSpec {
+            review_protocol: None,
             label: "x".into(),
             signable: Signable::Whole,
             algorithm: SignAlgorithm::Ed25519,

@@ -18,6 +18,6 @@ clap = { version = "4", features = ["derive"] }
 hex.workspace = true
 serde_json.workspace = true
 pallas-codec = "1.4"
-pallas-primitives = "1.4"
+cardano-tx = { path = "../../interpreters/cardano-tx" }
 ed25519-dalek.workspace = true
 tempfile = "3"

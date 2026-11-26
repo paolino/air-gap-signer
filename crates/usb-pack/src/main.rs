@@ -91,6 +91,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let spec = SigningSpec {
+        review_protocol: (cli.signable == "cardano-body")
+            .then_some(signer_core::spec::ReviewProtocol::CardanoConway),
         label: cli.label,
         signable,
         algorithm: parse_algorithm(&cli.algorithm),

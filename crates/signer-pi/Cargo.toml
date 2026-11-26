@@ -30,6 +30,7 @@ name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
 [dependencies]
+cardano-tx = { path = "../../interpreters/cardano-tx" }
 panel-input = { path = "../panel-input" }
 signer-core = { path = "../signer-core" }
 signer-hal = { path = "../signer-hal" }

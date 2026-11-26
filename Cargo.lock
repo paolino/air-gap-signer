@@ -221,6 +221,7 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "pallas-addresses",
+ "pallas-codec",
  "pallas-primitives",
  "pallas-traverse",
  "serde_json",
@@ -1994,6 +1995,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "aes-gcm",
+ "cardano-tx",
  "cbc",
  "ciborium",
  "clap",
@@ -2206,12 +2208,12 @@ dependencies = [
 name = "usb-pack"
 version = "0.1.0"
 dependencies = [
+ "cardano-tx",
  "ciborium",
  "clap",
  "ed25519-dalek",
  "hex",
  "pallas-codec",
- "pallas-primitives",
  "serde",
  "serde_json",
  "signer-core",

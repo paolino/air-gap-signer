@@ -1,6 +1,4 @@
 //! Keep the ledger's original transaction body bytes in the review payload.
-use pallas_codec::minicbor::Decoder;
-use pallas_primitives::conway::Tx;
 use serde::Deserialize;
 use signer_core::spec::{HashAlgorithm, Signable, SignableSource};
 
@@ -24,19 +22,9 @@ pub fn prepare(input: Vec<u8>) -> Result<(Vec<u8>, Signable), Error> {
     } else {
         input
     };
-    let mut decoder = Decoder::new(&payload);
-    let tx: Tx = decoder.decode()?;
-    if decoder.position() != payload.len() {
-        return Err("unexpected bytes after Cardano transaction".into());
-    }
-    let body = tx.transaction_body.raw_cbor();
-    let mut header = Decoder::new(&payload);
-    header.array()?;
-    let offset = header.position();
+    let (_, body) = cardano_tx::decode_conway(&payload)?;
+    let offset = body.start;
     let length = body.len();
-    if payload.get(offset..offset + length) != Some(body) {
-        return Err("Cardano body differs from the original payload".into());
-    }
     let signable = Signable::HashThenSign {
         hash: HashAlgorithm::Blake2b256,
         source: SignableSource::Range { offset, length },
