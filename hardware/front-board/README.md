@@ -18,7 +18,7 @@ The display candidate is Surenoo **STP0350A3-320480 NTP**, a 480 × 320 IPS pane
 | Confirm, Mode | 5, 6 |
 | SE051 I²C SDA, SCL | 2, 3 |
 
-GPIO24 is the proposed display reset. The six active-low controls match the software at the checkout's base revision, where GPIO6 selects Mode. The product needs a five-way joystick with an independent centre contact wired to the trusted panel controller. The bonnet’s centre press is GPIO4 and the current Pi button driver ignores it. Include this contact in the next schematic and input-driver revision. Keep Confirm identifiable by touch. [Base button mapping](https://github.com/paolino/air-gap-signer/blob/4bd577d2685f8875e9c7e873d5bd20d3feed3cad/crates/signer-pi/src/buttons.rs#L15)
+GPIO24 is the proposed display reset. The six active-low controls match the software at the checkout's base revision, where GPIO6 selects Mode. The product needs a five-way joystick with an independent centre contact wired to the trusted panel controller. The bonnet’s centre press is GPIO4 and the transaction-review driver ignores it. The separate joystick PIN trial reads GPIO4. Include this contact in the production schematic. Keep Confirm identifiable by touch. [Base button mapping](https://github.com/paolino/air-gap-signer/blob/4bd577d2685f8875e9c7e873d5bd20d3feed3cad/crates/signer-pi/src/buttons.rs#L15)
 
 U1 uses NXP **SE051C2HQ1/Z01XD** in **SOT1969-1**. VIN, VCC, ENA and the unused ISO 7816 reset are held at 3.3 V. LA, LB, VSS and the thermal pad go to ground per the datasheet. The Pi supplies the I²C pull-ups for this draft. Probe pads expose 3.3 V, ground, SDA and SCL for bring-up. Check the footprint against the manufacturer's exact land pattern and test I²C and the absence of a contactless response at power-up on the assembled board. [NXP datasheet](https://www.nxp.com/docs/en/data-sheet/SE051.pdf) · [Package drawing](https://www.nxp.com/docs/en/package-information/SOT1969-1.pdf)
 
@@ -37,6 +37,14 @@ For release, check with an actual 75 mm bracket and a flat drilled plate. Publis
 ### Electrical boundary for enclosure builders
 
 The panel must accept power and a documented message connection from an untrusted host. Display, PIN controls, authentication and wallet keys belong to the panel. Camera acquisition for the finished module must work with a host that has no camera socket. Select and validate an on-panel capture/decoder or bridge for the chosen sensor. The Pi CSI ribbon is a bench arrangement. Before release publish connector and mating part numbers, pinout, voltage and peak current, cable limits, and a versioned request/response description. Acceptance includes running recognition, key management and one disposable-key signing exchange on a flat mounting plate with a simple host adapter.
+
+### Try the panel controls on a Raspberry Pi
+
+Use the existing 240 × 240 bonnet on a bench Pi with a disposable sequence. Finish or exit the current review first. The demo takes the framebuffer lock before it opens the GPIO lines. An ordinary transaction review interprets joystick movements as navigation immediately.
+
+On a Linux build machine run `nix develop -c just build-pi`. Copy `target/aarch64-unknown-linux-musl/release/signer-pi-demo` to the 64-bit Pi and run `./signer-pi-demo --panel-trial` with access to the framebuffer and GPIO device. The first prompt asks for nine actions. Each action is one direction or centre click followed by release. Cover the joystick, enter the sequence, then repeat it when prompted. Mode restarts the current entry. A mismatch asks for another attempt. A match opens one built-in sample review, which ends on confirmation or rejection. The PIN screen stays still during entry. The Pi holds the disposable sequence in memory for the trial.
+
+This exercises the front-panel interaction on Linux. The production controller, paired phone protocol, chip-enforced retry policy and signing operation are outside this bench trial.
 
 ### Pi 3B bench installation
 

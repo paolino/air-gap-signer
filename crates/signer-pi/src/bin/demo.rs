@@ -3,6 +3,10 @@
 //! every shortened line has been read, button #6 rejects.
 
 #[cfg(target_os = "linux")]
+#[path = "demo/joystick_pin.rs"]
+mod joystick_pin;
+
+#[cfg(target_os = "linux")]
 fn main() {
     linux::main()
 }
@@ -42,6 +46,10 @@ mod linux {
         /// GPIO character device
         #[arg(long, default_value = "/dev/gpiochip0")]
         chip: String,
+
+        /// Try eyes-free entry of a disposable joystick PIN before one sample review
+        #[arg(long, conflicts_with_all = ["script", "json"])]
+        panel_trial: bool,
 
         /// Review this JSON file instead of the built-in sample
         #[arg(long)]
@@ -134,6 +142,7 @@ mod linux {
         display: &mut FbDisplay,
         buttons: &mut B,
         value: &serde_json::Value,
+        single_trial: bool,
     ) -> Result<(), HalError> {
         loop {
             let (cols, rows) = display.text_grid();
@@ -146,6 +155,12 @@ mod linux {
                     done => break done,
                 }
             };
+            if single_trial {
+                return display.show_message(match outcome {
+                    Outcome::Confirmed => "Practice review confirmed. Trial complete.",
+                    _ => "Practice review rejected. Trial complete.",
+                });
+            }
             let message = match outcome {
                 Outcome::Confirmed => "Confirmed. Any button to restart.",
                 _ => "Rejected. Any button to restart.",
@@ -178,14 +193,17 @@ mod linux {
         let result = match &cli.script {
             Some(path) => {
                 let mut script = Script::load(path, cli.step_ms).unwrap_or_else(|e| fail(e));
-                match run(&mut display, &mut script, &value) {
+                match run(&mut display, &mut script, &value, false) {
                     Err(HalError::Button(m)) if m == "script finished" => Ok(()),
                     other => other,
                 }
             }
             None => {
+                if cli.panel_trial {
+                    super::joystick_pin::trial(&cli.chip, &mut display).unwrap_or_else(|e| fail(e));
+                }
                 let mut buttons = GpioButtons::open(&cli.chip).unwrap_or_else(|e| fail(e));
-                run(&mut display, &mut buttons, &value)
+                run(&mut display, &mut buttons, &value, cli.panel_trial)
             }
         };
         if let Err(e) = result {
