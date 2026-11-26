@@ -78,7 +78,7 @@ match [Adafruit's published pinout](https://learn.adafruit.com/adafruit-1-3-colo
 | joystick down | 22 |
 | joystick left | 27 |
 | joystick right | 23 |
-| joystick press | 4 |
+| joystick press (unused) | 4 |
 | button #5 | 5 |
 | button #6 | 6 |
 
@@ -219,7 +219,8 @@ wallet slots are separate.
 Enter the recovery token’s existing PIN on the panel. Move the joystick in four directions
 to highlight a key on the QWERTY keyboard. Button #5 presses that key.
 ABC changes case, #+= shows symbols, and Accents shows accented letters.
-Space and Del edit the entry. Select Send to submit the PIN, or press #6
+Holding any direction repeats movement. The selection flashes for 100 ms on
+input. Space and Del edit the entry. Select the green Send key to submit, or press #6
 to cancel. Only the character count is displayed. Keep the camera off during
 entry. This PIN belongs to the FIDO token and is separate from the signer PIN.
 

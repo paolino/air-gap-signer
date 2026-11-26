@@ -223,3 +223,120 @@ mod tests {
         assert_eq!(&p.bytes[60..62], &[0, 0]);
     }
 }
+
+/// Sampled recovery-keyboard contacts, in bonnet line order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stroke {
+    Select,
+    Cancel,
+    Up,
+    Down,
+    Right,
+    Left,
+}
+
+/// Debounce the six contacts. A held direction repeats; selection and
+/// cancellation require a new press after a stable neutral sample.
+#[derive(Default)]
+pub struct KeyRepeat {
+    raw: Option<u8>,
+    stable: Option<u8>,
+    changed: core::time::Duration,
+    ready: bool,
+    repeat_at: Option<core::time::Duration>,
+}
+
+impl KeyRepeat {
+    pub fn sample(&mut self, raw: u8, now: core::time::Duration) -> Option<Stroke> {
+        use core::time::Duration;
+        const DEBOUNCE: Duration = Duration::from_millis(20);
+        const DELAY: Duration = Duration::from_millis(400);
+        const PERIOD: Duration = Duration::from_millis(120);
+        if self.raw != Some(raw) {
+            self.raw = Some(raw);
+            self.changed = now;
+            self.repeat_at = None;
+            return None;
+        }
+        if now.saturating_sub(self.changed) < DEBOUNCE {
+            return None;
+        }
+        let key = match raw {
+            1 => Some(Stroke::Select),
+            2 => Some(Stroke::Cancel),
+            4 => Some(Stroke::Up),
+            8 => Some(Stroke::Down),
+            16 => Some(Stroke::Right),
+            32 => Some(Stroke::Left),
+            _ => None,
+        };
+        if self.stable != Some(raw) {
+            self.stable = Some(raw);
+            if raw == 0 {
+                self.ready = true;
+                return None;
+            }
+            if !core::mem::take(&mut self.ready) {
+                return None;
+            }
+            if matches!(
+                key,
+                Some(Stroke::Up | Stroke::Down | Stroke::Right | Stroke::Left)
+            ) {
+                self.repeat_at = Some(now + DELAY);
+            }
+            return key;
+        }
+        if self.repeat_at.is_some_and(|at| now >= at) {
+            self.repeat_at = Some(now + PERIOD);
+            return key;
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod repeat_tests {
+    use super::*;
+    use core::time::Duration;
+    #[test]
+    fn only_the_four_directions_repeat_and_release_stops_them() {
+        for (mask, stroke, moves) in [
+            (1, Stroke::Select, false),
+            (2, Stroke::Cancel, false),
+            (4, Stroke::Up, true),
+            (8, Stroke::Down, true),
+            (16, Stroke::Right, true),
+            (32, Stroke::Left, true),
+        ] {
+            let mut r = KeyRepeat::default();
+            let mut sample = |raw, t| r.sample(raw, Duration::from_millis(t));
+            assert_eq!(sample(0, 0), None);
+            assert_eq!(sample(0, 20), None);
+            assert_eq!(sample(mask, 30), None);
+            assert_eq!(sample(mask, 50), Some(stroke));
+            assert_eq!(sample(mask, 449), None);
+            assert_eq!(sample(mask, 450), moves.then_some(stroke));
+            assert_eq!(sample(mask, 569), None);
+            assert_eq!(sample(mask, 570), moves.then_some(stroke));
+            assert_eq!(sample(0, 571), None);
+            assert_eq!(sample(0, 1000), None);
+        }
+    }
+    #[test]
+    fn held_on_entry_and_chords_do_not_type() {
+        let mut r = KeyRepeat::default();
+        for (t, mask) in [
+            (0, 1),
+            (100, 1),
+            (200, 0),
+            (220, 0),
+            (300, 17),
+            (340, 17),
+            (400, 1),
+            (450, 1),
+        ] {
+            assert_eq!(r.sample(mask, Duration::from_millis(t)), None);
+        }
+    }
+}

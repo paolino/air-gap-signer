@@ -86,14 +86,22 @@ mod linux {
         }
     }
 
+    impl signer_pi::recovery_pin::PinContacts for Hal {
+        fn pin_contacts(&mut self) -> Result<u8, signer_hal::HalError> {
+            self.buttons.pin_contacts()
+        }
+    }
+
     impl signer_pi::recovery_pin::PinDisplay for Hal {
         fn draw_keyboard(
             &mut self,
             keyboard: &panel_input::token_pin::Keyboard,
             count: usize,
             status: panel_input::token_pin::Selected,
+            highlight: bool,
         ) -> Result<(), signer_hal::HalError> {
-            self.display.draw_keyboard(keyboard, count, status)
+            self.display
+                .draw_keyboard(keyboard, count, status, highlight)
         }
     }
 

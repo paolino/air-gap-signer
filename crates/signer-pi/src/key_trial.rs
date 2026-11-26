@@ -121,7 +121,7 @@ fn erase_owned(se: &mut Se051, public: &[u8; 32]) -> Result<(), Error> {
 
 /// Run again with the same directory and token after the first erase.
 pub fn run(
-    hal: &mut (impl Buttons + Display + recovery_pin::PinDisplay),
+    hal: &mut (impl Buttons + Display + recovery_pin::PinDisplay + recovery_pin::PinContacts),
     dir: &Path,
 ) -> Result<(), Error> {
     // Serialise all instances even when started with different archive paths.
