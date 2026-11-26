@@ -21,6 +21,19 @@ pub fn review_stick<H: Display + Buttons, U: UsbMount>(
     usb: &mut U,
     signer: &mut dyn Signer,
 ) -> Result<Signatures, Box<dyn std::error::Error>> {
+    review_stick_with_keys(hal, usb, signer, None)
+}
+
+pub type LocalKeys<H> =
+    fn(&mut H, &mut signer_core::key_menu::KeyMenu) -> Result<(), signer_hal::HalError>;
+
+/// A physical panel can take over its local Keys menu until Mode returns to review.
+pub fn review_stick_with_keys<H: Display + Buttons, U: UsbMount>(
+    hal: &mut H,
+    usb: &mut U,
+    signer: &mut dyn Signer,
+    local_keys: Option<LocalKeys<H>>,
+) -> Result<Signatures, Box<dyn std::error::Error>> {
     usb.mount_readonly()?;
     let contents = usb.read_contents();
     usb.unmount()?;
@@ -42,8 +55,15 @@ pub fn review_stick<H: Display + Buttons, U: UsbMount>(
     let mut session = Session::new(Review::new(lines, cols, rows)?, message, &allowed, signer);
     loop {
         hal.show_review(&session.view())?;
-        if let Finish::Done(signatures) = session.handle(hal.wait_event()?, signer) {
+        let event = hal.wait_event()?;
+        if let Finish::Done(signatures) = session.handle(event, signer) {
             return Ok(signatures);
+        }
+        if let (signer_hal::ButtonEvent::Mode, signer_core::session::Mode::Keys, Some(open)) =
+            (event, session.mode(), local_keys)
+        {
+            open(hal, session.key_menu_mut())?;
+            session.handle(signer_hal::ButtonEvent::Mode, signer);
         }
     }
 }
@@ -278,6 +298,35 @@ mod tests {
             files: Some((payload.to_vec(), wasm, spec)),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn local_keys_returns_to_the_same_review_without_signing() {
+        use ButtonEvent::{Confirm, Down, Mode, Up};
+        let mut hal = Hal {
+            presses: VecDeque::from([Mode, Mode, Up, Confirm, Mode, Mode, Down, Confirm]),
+            ..Default::default()
+        };
+        let mut usb = stick(b"hi", echo_hex(), spec("Test payment"));
+        let mut signer = OneKey::default();
+        let result = review_stick_with_keys(
+            &mut hal,
+            &mut usb,
+            &mut signer,
+            Some(|hal, menu| {
+                menu.refresh(Some([None; 4]));
+                menu.enable_practice();
+                menu.handle(hal.wait_event()?);
+                assert!(menu.handle(hal.wait_event()?));
+                assert_eq!(hal.wait_event()?, Mode);
+                Ok(())
+            }),
+        )
+        .unwrap();
+        assert!(result.is_empty());
+        assert!(signer.received.is_empty());
+        assert_eq!(hal.views[0], hal.views[2]);
+        assert!(hal.presses.is_empty());
     }
 
     #[test]

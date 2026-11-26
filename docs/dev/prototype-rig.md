@@ -211,7 +211,18 @@ number before relying on Ed25519.
 
 ## Disposable key recovery trial
 
-Run `signer-pi --practice-keys DIRECTORY` with the display, joystick, SE051 and
+On the Pi, press #6 for Keys while idle, or cycle Review → Sign → Keys with #6.
+The list contains four wallet slots followed by **Practice key**. From slot 0,
+one upward tap wraps to Practice key. Open it with #5 or right. An occupied
+practice key shows its fingerprint and offers **View public key**, **Verify
+backup**, and **Erase key**. Verify checks a fresh chip signature against the
+saved public key. Erase checks the encrypted backup with the token, then asks
+for #5 on the named fingerprint. #6 at that prompt keeps the key. An empty
+slot offers **Restore backup** if an archive exists or **Create + back up**
+otherwise. The menu stores the archive under `/var/lib/signer-pi/practice`.
+Sign mode continues to select eligible wallet keys by the transaction request.
+
+For the standalone lifecycle trial, run `signer-pi --practice-keys DIRECTORY` with the display, joystick, SE051 and
 a FIDO2 recovery token attached to the Pi. Use a fresh private directory on
 persistent storage. The trial uses SE051 test object `7DA03201`. The four
 wallet slots are separate.
