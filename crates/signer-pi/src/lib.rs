@@ -11,5 +11,9 @@ pub mod frame;
 pub mod large_blob;
 pub mod layout;
 #[cfg(target_os = "linux")]
+pub mod scp03;
+#[cfg(target_os = "linux")]
 pub mod se051;
+#[cfg(target_os = "linux")]
+pub mod se051_raw;
 pub mod usb;
