@@ -48,6 +48,7 @@ tempfile = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gpiocdev = "0.8"
+rustix = { version = "1", features = ["time"] }
 se05x = { version = "0.4.2", default-features = false, features = ["embedded-hal-v1.0"] }
 linux-embedded-hal = { version = "0.5", default-features = false, features = ["i2c"] }
 embedded-hal = "1"

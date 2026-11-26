@@ -2010,6 +2010,7 @@ dependencies = [
  "p256",
  "panel-input",
  "rand",
+ "rustix",
  "se05x",
  "serde_json",
  "sha2",
