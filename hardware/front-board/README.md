@@ -2,9 +2,11 @@
 
 The [secure project definition](secure-project.md) specifies the production trust boundary and release tests. The direct Pi wiring below belongs to the bench prototype.
 
-The product is a bolt-on signer panel. The display, controls, camera, trusted controller and SE051C2 travel together on a protected rear carrier. A separate host supplies power and exchanges requests and results. An enclosure builder can mount the panel to a flat plate, a custom box or a bracket. The Pi 3B assembly is one bench host.
+The product is a bolt-on signer panel. Both versions carry the display, controls, trusted controller and SE051C2 on a protected rear carrier. The base version receives phone QR messages through the host webcam and USB. The camera version can read the same messages directly while the phone is held over the panel. Both display outgoing codes on the panel and apply the same approval checks. A laptop connects directly with one USB data cable to power the panel, submit requests and receive results. Direct USB signing is a release requirement. A lower box is an optional host. An enclosure builder can mount the panel to a flat plate, a custom box or a bracket. The Pi 3B assembly is one bench host.
 
 [Panel face](fit.svg) · [1:1 mounting template](mount.svg) · [Bench KiCad schematic](front-board.kicad_sch)
+
+[Bill of materials for one STM32 bench prototype](stm32-prototype-bom.md)
 
 ## Electrical design
 
@@ -34,9 +36,11 @@ The proposed rear carrier has four blind M4 threaded inserts on a **75 × 75 mm 
 
 For release, check with an actual 75 mm bracket and a flat drilled plate. Publish the measured panel depth, rear connector position and cable clearance, mounting tolerances, screw engagement limits and suitable screw lengths for different plate thicknesses. Verify insertion stops short of the electronics and mounting loads leave the LCD and camera undisturbed. The template is for prototype layout pending these checks.
 
-### Electrical boundary for enclosure builders
+### USB interface for laptops and enclosure builders
 
-The panel must accept power and a documented message connection from an untrusted host. Display, PIN controls, authentication and wallet keys belong to the panel. Camera acquisition for the finished module must work with a host that has no camera socket. Select and validate an on-panel capture/decoder or bridge for the chosen sensor. The Pi CSI ribbon is a bench arrangement. Before release publish connector and mating part numbers, pinout, voltage and peak current, cable limits, and a versioned request/response description. Acceptance includes running recognition, key management and one disposable-key signing exchange on a flat mounting plate with a simple host adapter.
+The panel acts as a bus-powered USB device. Treat all messages from the host as untrusted. Display, PIN controls, authentication and wallet keys belong to the panel. On the camera-equipped model, camera acquisition must work with a host that has no camera socket. Select and validate an on-panel capture/decoder or bridge for the chosen sensor. The Pi CSI ribbon is a bench arrangement. Before release publish connector and mating part numbers, pinout, voltage and peak current, cable limits, and a versioned request/response description. Supply a working host client. Test a complete disposable-key signing exchange with the finished panel plugged directly into a laptop, including peak load with the display and camera operating. See the [release test](secure-project.md#evidence-required-for-release).
+
+The Raspberry Pi and laptop should use the same public host protocol. Start with an unsigned request and a disposable-key test case, and verify the returned signature against the submitted bytes. The Pi’s existing USB-stick reader is a source of requests for this client.
 
 ### Try the panel controls on a Raspberry Pi
 
