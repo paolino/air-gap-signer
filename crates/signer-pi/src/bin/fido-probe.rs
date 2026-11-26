@@ -14,8 +14,15 @@
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let run = || -> Result<String, Box<dyn std::error::Error>> {
-        let pin = std::env::var("FIDO_PIN").map_err(|_| "set FIDO_PIN")?;
         let mut token = signer_pi::fido::open()?;
+        if args == ["backup-info"] {
+            token.check_file_backup_support()?;
+            return Ok(format!(
+                "hmac-secret and PIN/UV protocol 2 available; {} PIN tries left",
+                token.pin_retries()?
+            ));
+        }
+        let pin = std::env::var("FIDO_PIN").map_err(|_| "set FIDO_PIN")?;
         match args
             .iter()
             .map(String::as_str)

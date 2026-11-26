@@ -7,6 +7,7 @@
 //! nothing). Signatures stay in memory until Done, and only while the
 //! review stays complete: undoing an accepted branch drops them.
 
+use crate::key_menu::{KeyMenu, PublicSlots};
 use crate::review::{ButtonEvent, Review, Row, View};
 use crate::spec::SignAlgorithm;
 
@@ -22,6 +23,10 @@ pub struct Key {
 /// Keys able to sign, and signing with them.
 pub trait Signer {
     fn keys(&self) -> Vec<Key>;
+    /// Inventory is independent of the keys permitted to sign this request.
+    fn public_slots(&mut self) -> Result<PublicSlots, String> {
+        Err("public inventory unavailable".into())
+    }
     /// Sign `message` with the key in `slot`.
     fn sign(&mut self, slot: u8, message: &[u8]) -> Result<Vec<u8>, String>;
 }
@@ -43,16 +48,8 @@ pub enum Finish {
     Done(Vec<(u8, Vec<u8>)>),
 }
 
-/// What Keys mode offers; not wired to the secure element yet.
-const KEY_ACTIONS: [&str; 5] = [
-    "Set PIN",
-    "Create key",
-    "Restore key",
-    "Back up key",
-    "Export public key",
-];
-
 pub struct Session {
+    key_menu: KeyMenu,
     review: Review,
     mode: Mode,
     message: Vec<u8>,
@@ -82,6 +79,7 @@ impl Session {
             .filter(|k| allowed.contains(&(k.slot, k.algorithm)))
             .collect();
         Self {
+            key_menu: KeyMenu::new(None, review.screen_rows()),
             review,
             mode: Mode::Review,
             message,
@@ -105,6 +103,9 @@ impl Session {
                 Mode::Sign => Mode::Keys,
                 Mode::Keys => Mode::Review,
             };
+            if self.mode == Mode::Keys {
+                self.key_menu.refresh(signer.public_slots().ok());
+            }
             self.cursor = 0;
             self.top = 0;
             return Finish::Continue;
@@ -119,12 +120,13 @@ impl Session {
                 }
             }
             Mode::Sign => return self.sign_mode(event, signer),
-            Mode::Keys => match event {
-                ButtonEvent::Up | ButtonEvent::UpHeld => self.step(KEY_ACTIONS.len(), false),
-                ButtonEvent::Down | ButtonEvent::DownHeld => self.step(KEY_ACTIONS.len(), true),
-                ButtonEvent::Confirm => self.notice = Some("not available yet".into()),
-                _ => {}
-            },
+            Mode::Keys => {
+                if self.key_menu.needs_retry() && event == ButtonEvent::Confirm {
+                    self.key_menu.refresh(signer.public_slots().ok());
+                } else {
+                    self.key_menu.handle(event);
+                }
+            }
         }
         Finish::Continue
     }
@@ -194,10 +196,6 @@ impl Session {
                 .take(self.body_rows())
                 .collect()
         };
-        let status = |name: &str| match &self.notice {
-            Some(n) => format!("{name} {n}"),
-            None => name.to_string(),
-        };
         match self.mode {
             Mode::Review => self.review.view(),
             Mode::Sign => {
@@ -225,16 +223,7 @@ impl Session {
                     rows: window(rows),
                 }
             }
-            Mode::Keys => View::Overview {
-                header: status("KEYS"),
-                rows: window(
-                    KEY_ACTIONS
-                        .iter()
-                        .enumerate()
-                        .map(|(i, a)| row(i, a.to_string()))
-                        .collect(),
-                ),
-            },
+            Mode::Keys => self.key_menu.view(),
         }
     }
 }
@@ -252,6 +241,9 @@ mod tests {
     }
 
     impl Signer for Fake {
+        fn public_slots(&mut self) -> Result<PublicSlots, String> {
+            Ok([None; 4])
+        }
         fn keys(&self) -> Vec<Key> {
             self.keys.clone()
         }
@@ -464,18 +456,11 @@ mod tests {
     }
 
     #[test]
-    fn keys_mode_lists_its_actions() {
+    fn keys_mode_lists_device_slots() {
         let mut f = fake();
         let mut s = session(serde_json::json!({"fee": "1"}), &f);
         s.handle(ButtonEvent::Mode, &mut f);
         s.handle(ButtonEvent::Mode, &mut f);
-        let (_, r, _) = rows(&s);
-        assert_eq!(
-            r,
-            KEY_ACTIONS
-                .iter()
-                .map(|a| a.to_string())
-                .collect::<Vec<_>>()
-        );
+        assert_eq!(rows(&s).1, ["0: empty", "1: empty", "2: empty", "3: empty"]);
     }
 }

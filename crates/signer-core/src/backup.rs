@@ -207,6 +207,11 @@ impl Backup {
         [&self.public_key[..], credential_id].concat()
     }
 
+    /// Public credential handles needed to present a saved file to its token.
+    pub fn credential_ids(&self) -> impl Iterator<Item = &[u8]> {
+        self.slots.iter().map(|slot| slot.credential_id.as_slice())
+    }
+
     /// How many tokens can open the backup.
     pub fn tokens(&self) -> usize {
         self.slots.len()

@@ -20,6 +20,18 @@ fn main() {
             .collect::<Vec<_>>()
             .as_slice()
         {
+            ["list"] => Ok(se
+                .public_slots()?
+                .into_iter()
+                .enumerate()
+                .map(|(slot, key)| {
+                    format!(
+                        "slot {slot} {}",
+                        key.map(hex::encode).unwrap_or_else(|| "empty".into())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")),
             ["create", s] => {
                 let seed = se.fresh_seed()?;
                 Ok(hex::encode(se.put_key(slot(s)?, &seed)?))
@@ -34,7 +46,8 @@ fn main() {
                 Ok("deleted".into())
             }
             _ => Err(
-                "usage: se051-keys create|public|delete <slot> | sign <slot> <message hex>".into(),
+                "usage: se051-keys list | create|public|delete <slot> | sign <slot> <message hex>"
+                    .into(),
             ),
         }
     };

@@ -1,6 +1,7 @@
 #![no_std]
 //! Eyes-free PIN entry shared by the Pi and the front-panel controller.
 use zeroize::Zeroizing;
+pub mod token_pin;
 
 /// Prototype sequence length.
 pub const PIN_LENGTH: usize = 9;

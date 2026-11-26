@@ -97,6 +97,13 @@ impl PiUsb {
         }
     }
 
+    /// Remember the device found by this scan so opening the Keys menu stays
+    /// possible if a stick is removed between polls.
+    pub fn poll_insert(&mut self) -> bool {
+        self.device = find_stick(&self.sys_block);
+        self.device.is_some()
+    }
+
     /// Block until the stick has been pulled out.
     pub fn wait_removed(&mut self) {
         while find_stick(&self.sys_block).is_some() {
@@ -122,8 +129,7 @@ impl PiUsb {
 impl UsbMount for PiUsb {
     fn wait_insert(&mut self) -> Result<(), HalError> {
         loop {
-            if let Some(device) = find_stick(&self.sys_block) {
-                self.device = Some(device);
+            if self.poll_insert() {
                 return Ok(());
             }
             thread::sleep(POLL);

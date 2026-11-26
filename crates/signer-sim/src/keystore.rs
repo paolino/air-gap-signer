@@ -165,6 +165,14 @@ impl signer_hal::SecureElement for SimSecureElement {
         Ok(signing_key.verifying_key().to_bytes().to_vec())
     }
 
+    fn public_slots(&self) -> Result<signer_core::key_menu::PublicSlots, HalError> {
+        Ok(std::array::from_fn(|slot| {
+            self.keys
+                .get(&(slot as u8))
+                .map(|seed| SigningKey::from_bytes(seed).verifying_key().to_bytes())
+        }))
+    }
+
     fn import_key(&mut self, slot: u8, seed: &[u8]) -> Result<Vec<u8>, HalError> {
         self.require_pin()?;
         let seed_arr: [u8; 32] = seed

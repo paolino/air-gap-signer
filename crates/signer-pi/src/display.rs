@@ -154,6 +154,54 @@ impl FbDisplay {
     }
 }
 
+impl crate::recovery_pin::PinDisplay for FbDisplay {
+    fn draw_keyboard(
+        &mut self,
+        keyboard: &panel_input::token_pin::Keyboard,
+        count: usize,
+        status: panel_input::token_pin::Selected,
+    ) -> Result<(), HalError> {
+        use panel_input::token_pin::{Key, Selected, ROWS};
+        static FONT: std::sync::LazyLock<TextFont> =
+            std::sync::LazyLock::new(|| TextFont::mono(16.0));
+        let font = &*FONT;
+        self.frame.fill(self.bg);
+        let title = match status {
+            Selected::TooLong => "PIN too long".to_string(),
+            Selected::TooShort => "At least 4 characters".to_string(),
+            _ => format!("Token PIN  ({count})"),
+        };
+        self.frame.draw_text(font, &title, 4, 2, self.fg, self.bg);
+        for row in 0..ROWS {
+            let n = keyboard.width(row);
+            for col in 0..n {
+                let left = col * SIZE / n;
+                let right = (col + 1) * SIZE / n;
+                let top = 26 + row * 30;
+                let key = keyboard.key(row, col);
+                let selected = row == keyboard.row && col == keyboard.column;
+                let (fg, bg) = if selected {
+                    (self.bg, self.accent)
+                } else {
+                    (self.fg, Rgb(40, 46, 56))
+                };
+                self.frame
+                    .fill_rect(left + 1, top, right - left - 2, 28, bg);
+                let label = match key {
+                    Key::Character(c) => c.to_string(),
+                    other => keyboard.action_label(other).into(),
+                };
+                let x =
+                    left + (right - left).saturating_sub(label.chars().count() * font.advance) / 2;
+                self.frame.draw_text(font, &label, x, top + 3, fg, bg);
+            }
+        }
+        self.frame
+            .draw_text(font, "#5 select   #6 cancel", 4, 214, self.fg, self.bg);
+        self.flush()
+    }
+}
+
 impl signer_hal::Display for FbDisplay {
     fn clear(&mut self) -> Result<(), HalError> {
         self.frame.fill(self.bg);
@@ -351,6 +399,27 @@ mod tests {
             })
         });
         assert!(inked);
+    }
+
+    #[test]
+    fn token_keyboard_highlight_follows_horizontal_and_vertical_moves() {
+        use crate::recovery_pin::PinDisplay;
+        use panel_input::token_pin::{Keyboard, Selected};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("frame");
+        let mut d = FbDisplay::with_file(path.clone(), File::create(&path).unwrap(), 18.0);
+        let mut board = Keyboard::default();
+        let cursor = d.accent.to_565();
+        d.draw_keyboard(&board, 0, Selected::Editing).unwrap();
+        assert_eq!(d.frame.pixel(3, 58), cursor); // Q
+        board.horizontal(true);
+        d.draw_keyboard(&board, 0, Selected::Editing).unwrap();
+        assert_ne!(d.frame.pixel(3, 58), cursor);
+        assert_eq!(d.frame.pixel(27, 58), cursor); // W
+        board.vertical(true);
+        d.draw_keyboard(&board, 0, Selected::Editing).unwrap();
+        assert_ne!(d.frame.pixel(27, 58), cursor);
+        assert_eq!(d.frame.pixel(29, 88), cursor); // S
     }
 
     #[test]

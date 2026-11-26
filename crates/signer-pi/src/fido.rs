@@ -189,7 +189,21 @@ impl<D: Read + Write> Device<D> {
     /// key, so the token can also hold the backup (needs the PIN and a
     /// touch); its id.
     pub fn enrol(&mut self, pin: &str) -> Result<Vec<u8>, FidoError> {
+        self.enrol_backup(pin, true)
+    }
+
+    /// File-backed backups carry their credential handle, so they require
+    /// neither a resident account nor storage in the token's large-blob array.
+    pub fn enrol_file(&mut self, pin: &str) -> Result<Vec<u8>, FidoError> {
+        self.enrol_backup(pin, false)
+    }
+
+    fn enrol_backup(&mut self, pin: &str, resident: bool) -> Result<Vec<u8>, FidoError> {
         let (_, auth) = self.pin_token(pin, PERMIT_MAKE_CREDENTIAL)?;
+        let mut extensions = vec![(text("hmac-secret"), Value::Bool(true))];
+        if resident {
+            extensions.push((text("largeBlobKey"), Value::Bool(true)));
+        }
         let request = map(vec![
             (int(1), Value::Bytes(CLIENT_DATA_HASH.to_vec())),
             (int(2), map(vec![(text("id"), text(RP_ID))])),
@@ -210,14 +224,8 @@ impl<D: Read + Write> Device<D> {
                     (text("type"), text("public-key")),
                 ])]),
             ),
-            (
-                int(6),
-                map(vec![
-                    (text("hmac-secret"), Value::Bool(true)),
-                    (text("largeBlobKey"), Value::Bool(true)),
-                ]),
-            ),
-            (int(7), map(vec![(text("rk"), Value::Bool(true))])),
+            (int(6), map(extensions)),
+            (int(7), map(vec![(text("rk"), Value::Bool(resident))])),
             (int(8), Value::Bytes(auth.authenticate(&CLIENT_DATA_HASH))),
             (int(9), int(2)),
         ]);
@@ -239,7 +247,8 @@ impl<D: Read + Write> Device<D> {
     /// The token's user-verified secret for `salt` under credential
     /// `id` (needs the PIN and a touch).
     pub fn secret(&mut self, id: &[u8], salt: &[u8; 32], pin: &str) -> Result<[u8; 32], FidoError> {
-        self.assert(Some(id), Some(salt), pin)?
+        self.request_assertions(Some(id), Some(salt), pin, false)?
+            .remove(0)
             .secret
             .ok_or_else(|| protocol("no hmac-secret output"))
     }
@@ -265,6 +274,16 @@ impl<D: Read + Write> Device<D> {
         salt: Option<&[u8; 32]>,
         pin: &str,
     ) -> Result<Vec<Assertion>, FidoError> {
+        self.request_assertions(id, salt, pin, true)
+    }
+
+    fn request_assertions(
+        &mut self,
+        id: Option<&[u8]>,
+        salt: Option<&[u8; 32]>,
+        pin: &str,
+        large_blob_key: bool,
+    ) -> Result<Vec<Assertion>, FidoError> {
         let (shared, auth) = self.pin_token(pin, PERMIT_GET_ASSERTION)?;
         let mut ext = Vec::new();
         if let Some(salt) = salt {
@@ -280,7 +299,9 @@ impl<D: Read + Write> Device<D> {
                 ]),
             ));
         }
-        ext.push((text("largeBlobKey"), Value::Bool(true)));
+        if large_blob_key {
+            ext.push((text("largeBlobKey"), Value::Bool(true)));
+        }
         let mut request = vec![
             (int(1), text(RP_ID)),
             (int(2), Value::Bytes(CLIENT_DATA_HASH.to_vec())),
@@ -448,6 +469,25 @@ impl<D: Read + Write> Device<D> {
                 Some((a.credential_id, backup))
             })
             .ok_or_else(|| protocol(crate::large_blob::BlobError::Missing.to_string()))
+    }
+
+    /// The file-backed trial uses hmac-secret and PIN/UV protocol 2.
+    /// GetInfo reads capabilities without checking a PIN or creating a credential.
+    pub fn check_file_backup_support(&mut self) -> Result<(), FidoError> {
+        let info = self.cbor(GET_INFO, None)?;
+        let has = |field_number, value| {
+            field(&info, field_number)
+                .ok()
+                .and_then(Value::as_array)
+                .is_some_and(|list| list.contains(&value))
+        };
+        if !has(2, text("hmac-secret")) {
+            return Err(protocol("token lacks hmac-secret"));
+        }
+        if !has(6, int(2)) {
+            return Err(protocol("token lacks PIN/UV protocol 2"));
+        }
+        Ok(())
     }
 
     /// Tries left before the token blocks its PIN.

@@ -139,7 +139,7 @@ pub fn check_message(message: &[u8]) -> Result<(), HalError> {
 }
 
 /// Key slots for signing keys.
-pub const SLOTS: u8 = 4;
+pub const SLOTS: u8 = signer_core::key_menu::SLOT_COUNT as u8;
 
 fn slot_id(slot: u8) -> ObjectId {
     ObjectId([0x7D, 0xA0, 0x01, slot])
@@ -182,8 +182,12 @@ impl Se051 {
         if slot >= SLOTS {
             return Err(HalError::Storage(format!("no key slot {slot}")));
         }
-        if self.public_key(slot)?.is_some() {
-            return Err(HalError::Storage(format!("key slot {slot} is in use")));
+        self.write_object(slot_id(slot), seed)
+    }
+
+    pub(crate) fn write_object(&mut self, id: ObjectId, seed: &Seed) -> Result<[u8; 32], HalError> {
+        if self.read_public_object(id)?.is_some() {
+            return Err(HalError::Storage("key object is occupied".into()));
         }
         let public = ed25519_dalek::SigningKey::from_bytes(seed)
             .verifying_key()
@@ -197,7 +201,7 @@ impl Se051 {
                     key_type: Some(P1KeyType::KeyPair),
                     policy: None,
                     max_attempts: None,
-                    object_id: slot_id(slot),
+                    object_id: id,
                     curve: Some(EcCurve::IdEccEd25519),
                     private_key: Some(seed.as_slice()),
                     public_key: Some(&public),
@@ -208,17 +212,28 @@ impl Se051 {
         Ok(public)
     }
 
+    /// Read each wallet slot. A failed read invalidates the whole inventory.
+    pub fn public_slots(&mut self) -> Result<signer_core::key_menu::PublicSlots, HalError> {
+        let mut slots = [None; signer_core::key_menu::SLOT_COUNT];
+        for (index, public) in slots.iter_mut().enumerate() {
+            *public = self.public_key(index as u8)?;
+        }
+        Ok(slots)
+    }
+
     /// The public key stored with `slot`'s key, if the slot is in use.
     pub fn public_key(&mut self, slot: u8) -> Result<Option<[u8; 32]>, HalError> {
+        self.read_public_object(slot_id(slot))
+    }
+
+    pub(crate) fn read_public_object(
+        &mut self,
+        id: ObjectId,
+    ) -> Result<Option<[u8; 32]>, HalError> {
         let buf = &mut [0u8; 128];
         let exists = self
             .chip
-            .run_command(
-                &CheckObjectExists {
-                    object_id: slot_id(slot),
-                },
-                buf,
-            )
+            .run_command(&CheckObjectExists { object_id: id }, buf)
             .map_err(|e| err("check slot", e))?
             .result
             .is_success();
@@ -226,7 +241,7 @@ impl Se051 {
             return Ok(None);
         }
         let read = ReadObject {
-            object_id: slot_id(slot),
+            object_id: id,
             offset: None,
             length: None,
             rsa_key_component: None,
@@ -244,16 +259,24 @@ impl Se051 {
     /// Sign `message` with `slot`'s key. The signature is checked against
     /// the slot's public key before it is returned.
     pub fn sign(&mut self, slot: u8, message: &[u8]) -> Result<[u8; 64], HalError> {
+        self.sign_object(slot_id(slot), message)
+    }
+
+    pub(crate) fn sign_object(
+        &mut self,
+        id: ObjectId,
+        message: &[u8],
+    ) -> Result<[u8; 64], HalError> {
         check_message(message)?;
         let public = self
-            .public_key(slot)?
-            .ok_or_else(|| HalError::Storage(format!("key slot {slot} is empty")))?;
+            .read_public_object(id)?
+            .ok_or_else(|| HalError::Storage("key object is empty".into()))?;
         let buf = &mut [0u8; 256];
         let chip = self
             .chip
             .run_command(
                 &EddsaSign {
-                    key_id: slot_id(slot),
+                    key_id: id,
                     data: message,
                 },
                 buf,
@@ -266,14 +289,13 @@ impl Se051 {
 
     /// Erase `slot`'s key.
     pub fn delete_key(&mut self, slot: u8) -> Result<(), HalError> {
+        self.delete_object(slot_id(slot))
+    }
+
+    pub(crate) fn delete_object(&mut self, id: ObjectId) -> Result<(), HalError> {
         let buf = &mut [0u8; 64];
         self.chip
-            .run_command(
-                &DeleteSecureObject {
-                    object_id: slot_id(slot),
-                },
-                buf,
-            )
+            .run_command(&DeleteSecureObject { object_id: id }, buf)
             .map_err(|e| err("delete key", e))?;
         Ok(())
     }

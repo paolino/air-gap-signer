@@ -208,3 +208,34 @@ the driver's PIN, key and signing operations must be tested on each part
 and on each applet version it claims to support.
 Which curves a given part supports depends on its variant; check the part
 number before relying on Ed25519.
+
+## Disposable key recovery trial
+
+Run `signer-pi --practice-keys DIRECTORY` with the display, joystick, SE051 and
+a FIDO2 recovery token attached to the Pi. Use a fresh private directory on
+persistent storage. The trial uses SE051 test object `7DA03201`. The four
+wallet slots are separate.
+
+Enter the recovery token’s existing PIN on the panel. Move the joystick in four directions
+to highlight a key on the QWERTY keyboard. Button #5 presses that key.
+ABC changes case, #+= shows symbols, and Accents shows accented letters.
+Space and Del edit the entry. Select Send to submit the PIN, or press #6
+to cancel. Only the character count is displayed. Keep the camera off during
+entry. This PIN belongs to the FIDO token and is separate from the signer PIN.
+
+The first run creates an encrypted `practice-backup.cbor` and exports the
+32-byte public key in `practice-public.key`. The token performs the operation
+that unlocks the backup. The panel rereads and decrypts the saved file and
+checks that the chip can sign under the same public key before offering
+to erase the test object. Check the fingerprint and back up both files to
+another device. At an erase prompt #5 erases and #6 exits with the object
+intact.
+
+After erasure, restart the program using the two saved files and the same
+token. It restores the test key, verifies a fresh signature, shows the
+full public key and offers to erase the test object again. Both files
+remain available. The file-backed credential uses the token’s
+`hmac-secret` extension and PIN/UV protocol 2. Losing or resetting the
+only enrolled token makes this trial backup unrecoverable. The phone
+approval and chip policy required for actual wallet changes are separate
+work.

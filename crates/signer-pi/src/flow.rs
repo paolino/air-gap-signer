@@ -48,11 +48,16 @@ pub fn review_stick<H: Display + Buttons, U: UsbMount>(
     }
 }
 
-/// The Pi's signer until the secure element is wired: no keys, so
-/// nothing can be signed.
-pub struct NoKeys;
+/// Public inspection works independently of signing authorization.
+pub struct PiKeyInventory;
 
-impl Signer for NoKeys {
+impl Signer for PiKeyInventory {
+    #[cfg(target_os = "linux")]
+    fn public_slots(&mut self) -> Result<signer_core::key_menu::PublicSlots, String> {
+        crate::se051::Se051::open("/dev/i2c-1")
+            .and_then(|mut se| se.public_slots())
+            .map_err(|error| error.to_string())
+    }
     fn keys(&self) -> Vec<Key> {
         Vec::new()
     }

@@ -1,6 +1,7 @@
 pub mod backup;
 pub mod crypto;
 pub mod display;
+pub mod key_menu;
 pub mod review;
 pub mod session;
 pub mod spec;

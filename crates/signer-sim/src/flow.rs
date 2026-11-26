@@ -257,6 +257,9 @@ struct SeSigner<'a>(&'a mut dyn SecureElement);
 const SIM_SLOTS: u8 = 4;
 
 impl Signer for SeSigner<'_> {
+    fn public_slots(&mut self) -> Result<signer_core::key_menu::PublicSlots, String> {
+        self.0.public_slots().map_err(|error| error.to_string())
+    }
     fn keys(&self) -> Vec<Key> {
         (0..SIM_SLOTS)
             .filter_map(|slot| {
