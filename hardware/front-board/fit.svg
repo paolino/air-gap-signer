@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="151mm" height="187mm" viewBox="0 0 151 187">
+<svg xmlns="http://www.w3.org/2000/svg" width="151mm" height="228mm" viewBox="0 0 151 228">
   <title>Air Gap Signer front board and enclosure fit</title>
   <desc>Nominal 1:1 plan and side views with a removable base cover for servicing the installed boot microSD.</desc>
   <defs>
@@ -7,7 +7,7 @@
       <path d="M0 0l3 1.5L0 3z" fill="#16647b"/>
     </marker>
   </defs>
-  <rect width="151" height="187" fill="#fff"/>
+  <rect width="151" height="228" fill="#fff"/>
   <g font-family="sans-serif" fill="#202c37" font-size="2.65">
     <text x="11" y="7" font-weight="bold" font-size="3.6">Air Gap Signer front board</text>
     <text x="11" y="11.5">Nominal fit · print at 100% · dimensions in mm</text>
@@ -98,5 +98,15 @@
     <text x="11" y="173" font-weight="bold">Boot microSD · service access</text>
     <text x="11" y="178">Leave the boot card installed during everyday use.</text>
     <text x="11" y="182.5">Power off and open the base cover to replace or reimage the card.</text>
+    <text x="11" y="192" font-weight="bold">Rear-wall camera · bench fit target</text>
+    <rect x="11" y="196" width="25" height="24" fill="#d8e8df" stroke="#405f52" stroke-width=".3"/>
+    <text x="23.5" y="207" text-anchor="middle" font-size="2.4">Camera PCB</text>
+    <text x="23.5" y="212" text-anchor="middle" font-size="2.4">25 × 24 mm</text>
+    <rect x="40" y="196" width="11.5" height="24" fill="#edf1f4" stroke="#405f52" stroke-width=".3"/>
+    <text x="45.75" y="209" text-anchor="middle" font-size="2.35">11.5</text>
+    <text x="56" y="201">Mount facing out of the rear wall, opposite HDMI.</text>
+    <text x="56" y="207">Module envelopes shown at 1:1. Allow extra space</text>
+    <text x="56" y="212">for the CSI ribbon and the rear mounting pocket.</text>
+    <text x="56" y="218">Set aperture and fasteners from the supplier drawing.</text>
   </g>
 </svg>

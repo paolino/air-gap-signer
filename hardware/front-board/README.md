@@ -2,7 +2,7 @@
 
 The [secure project definition](secure-project.md) specifies the production trust boundary and release tests. The direct Pi wiring below belongs to the bench prototype.
 
-This is the first schematic and fit draft for a Pi 3 Model B plug-on board. One PCB carries a 3.5-inch landscape display, physical controls and a soldered SE051C2. The Pi supplies power and hosts the transaction USB stick. The board has no camera, touch controller or NFC antenna.
+This is the first schematic and fit draft for a Pi 3 Model B plug-on board. One PCB carries a 3.5-inch landscape display, physical controls and a soldered SE051C2. The Pi supplies power and hosts the transaction USB stick. The enclosure carries a camera for reading the phone’s QR codes. On the Pi 3B rig it plugs into the existing CSI camera socket through an internal ribbon, leaving the 40-pin board connection available for the front board.
 
 [KiCad schematic](front-board.kicad_sch) · [1:1 fit drawing](fit.svg)
 
@@ -33,6 +33,12 @@ The first assembly uses a **custom enclosure** with four nominal **8 mm feet** u
 Mount the Pi to the base on its four standoffs and support the front board independently on enclosure rails or bosses. Fasten it from the back or the edges, clear of each plug path. The 40-pin connection mates directly through a socket stack with full pin engagement. Start with **20 mm from the top of the Pi PCB to the underside of the front PCB**, leaving **4 mm nominal** over the Pi's 16 mm USB stacks before subtracting any underside parts, solder or tolerance. Verify the socket height and keep protruding parts and fasteners out of that overhead clearance. Use removable front-board fixings so the Pi's internal CSI and DSI ribbon latches remain serviceable.
 
 With the front board installed, insert and remove the actual transaction stick and plugs at all four USB-A ports, Ethernet, micro-USB power, HDMI and A/V. Include the plug shells, the Ethernet release tab, finger grip and cable bend room in the fit check. Power off, open the base and check that the owner can replace the card and refit the cover without disturbing the display flex. Check the screen flex fold and connector latch before fixing mounting holes. The drawing sets targets for this fit check. Final cutouts, socket stack and feet depend on the physical assembly.
+
+## Camera and phone approval
+
+Use the standard autofocus Raspberry Pi Camera Module 3 as the bench candidate. Its nominal envelope is 25 × 24 × 11.5 mm. Connect it to the Pi 3B camera socket with a standard 15-pin ribbon. Mount the lens facing out of the rear wall, opposite the power and HDMI edge, so the phone can present a code while the signer rests on its feet. Reserve space there for the module, connector and ribbon bend. The existing 105 × 62 mm front PCB dimensions refer to the display and controls. Size the rear camera pocket on a mock-up and confirm the field of view through the finished opening, USB/Ethernet plug clearance and access to the SD service cover. [Camera module specifications](https://www.raspberrypi.com/products/camera-module-3/) · [Raspberry Pi mechanical drawings](https://pip.raspberrypi.com/categories/1207-design-files)
+
+On the bench, display a harmless QR code on the actual Android phone and read it through the camera with the intended case opening in place. Then scan the longest recognition and approval messages in both directions on the 240 × 240 prototype and the proposed 480 × 320 display. Check glare, handheld focus, scan distance and cancellation. If evidence spans several QR frames, bound their count and total size and verify the completely assembled message. [Security and acceptance criteria](secure-project.md)
 
 ## Bench checks before layout
 
