@@ -21,6 +21,10 @@ build-pi:
         file "$f" | grep -q "ARM aarch64.*statically linked"
     done
 
+# Compile the same PIN entry library for the proposed Cortex-M33 controller
+build-panel-input:
+    cargo build --locked -p panel-input --release --target thumbv8m.main-none-eabihf
+
 # Run all tests
 test: build-wasm
     cargo test --workspace --exclude echo-hex
@@ -38,7 +42,7 @@ lint:
     cargo clippy --workspace --exclude echo-hex -- -D warnings
 
 # Full CI pipeline
-ci: format-check lint build build-wasm build-pi test gerbers schematic
+ci: format-check lint build build-wasm build-pi build-panel-input test gerbers schematic
 
 # Build documentation
 build-docs:

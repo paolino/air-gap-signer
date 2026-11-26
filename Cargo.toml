@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/panel-input",
     "crates/signer-core",
     "crates/signer-hal",
     "crates/signer-sim",

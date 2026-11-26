@@ -44,7 +44,9 @@ Use the existing 240 × 240 bonnet on a bench Pi with a disposable sequence. Fin
 
 On a Linux build machine run `nix develop -c just build-pi`. Copy `target/aarch64-unknown-linux-musl/release/signer-pi-demo` to the 64-bit Pi and run `./signer-pi-demo --panel-trial` with access to the framebuffer and GPIO device. The first prompt asks for nine actions. Each action is one direction or centre click followed by release. Cover the joystick, enter the sequence, then repeat it when prompted. Mode restarts the current entry. A mismatch asks for another attempt. A match opens one built-in sample review, which ends on confirmation or rejection. The PIN screen stays still during entry. The Pi holds the disposable sequence in memory for the trial.
 
-This exercises the front-panel interaction on Linux. The production controller, paired phone protocol, chip-enforced retry policy and signing operation are outside this bench trial.
+The Pi reads debounced switches and passes their levels to the same [Rust PIN entry library](../../crates/panel-input/src/lib.rs) built for the proposed STM32H573. That library consumes a neutral position, directions and centre press, handles ambiguous inputs and cancellation, and emits a completed sequence. It owns no GPIO, screen, clock or credential store. The Pi trial compares disposable sequences in memory. The production controller must submit the sequence to the secure element under the policy in [issue #39](https://github.com/paolino/air-gap-signer/issues/39).
+
+Run `nix develop -c just build-panel-input` to compile the library for bare-metal Cortex-M33. On the first controller board, replay the same switch traces and compare results, then measure real switch bounce and check that display redraw and camera load do not lose input. The controller still needs its own board drivers and bootable firmware. This trial exercises the front-panel interaction on Linux. The production controller, paired phone protocol, chip-enforced retry policy and signing operation are outside this bench trial.
 
 ### Pi 3B bench installation
 

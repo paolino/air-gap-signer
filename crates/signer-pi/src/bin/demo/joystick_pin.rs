@@ -1,33 +1,13 @@
 //! Volatile, disposable PIN trial for the prototype bonnet.
 use gpiocdev::line::{Bias, Value, Values};
 use gpiocdev::Request;
+use panel_input::{EntryEvent, PinEntry, Sequence};
 use signer_hal::{Display, HalError};
 use signer_pi::buttons::{DEBOUNCE, POLL, SETTLE};
 use std::thread;
-use zeroize::Zeroizing;
 
-// Up, right, down, left, centre, Mode, Confirm. Bit positions are local to this demo.
+// BCM line numbers in panel_input contact order.
 const LINES: [u32; 7] = [17, 23, 22, 27, 4, 6, 5];
-const MODE: u8 = 1 << 5;
-const LENGTH: usize = 9;
-
-#[derive(Default)]
-struct Gesture {
-    contacts: u8,
-}
-
-// Collect all debounced contacts across one excursion, including rolls
-// between contacts. Emit only once the joystick returns to neutral.
-impl Gesture {
-    fn sample(&mut self, down: u8) -> Option<u8> {
-        if down != 0 {
-            self.contacts |= down;
-            return None;
-        }
-        let contacts = std::mem::take(&mut self.contacts);
-        (contacts.is_power_of_two() && contacts <= MODE).then_some(contacts)
-    }
-}
 
 fn gpio_error(e: gpiocdev::Error) -> HalError {
     HalError::Button(e.to_string())
@@ -62,31 +42,16 @@ impl Pad {
         }))
     }
 
-    fn enter(
-        &mut self,
-        display: &mut impl Display,
-        prompt: &str,
-    ) -> Result<Zeroizing<[u8; LENGTH]>, HalError> {
+    fn enter(&mut self, display: &mut impl Display, prompt: &str) -> Result<Sequence, HalError> {
         loop {
             display.show_message(prompt)?;
             thread::sleep(SETTLE);
-            while self.down()? != 0 {
-                thread::sleep(POLL);
-            }
-            let mut pin = Zeroizing::new([0; LENGTH]);
-            let mut used = 0;
-            let mut gesture = Gesture::default();
+            let mut entry = PinEntry::default();
             loop {
-                thread::sleep(POLL);
-                if let Some(symbol) = gesture.sample(self.down()?) {
-                    if symbol == MODE {
-                        break;
-                    }
-                    pin[used] = symbol;
-                    used += 1;
-                    if used == LENGTH {
-                        return Ok(pin);
-                    }
+                match entry.sample(self.down()?) {
+                    EntryEvent::Pending => thread::sleep(POLL),
+                    EntryEvent::Restart => break,
+                    EntryEvent::Complete(sequence) => return Ok(sequence),
                 }
             }
         }
@@ -99,7 +64,7 @@ pub(super) fn trial(chip: &str, display: &mut impl Display) -> Result<(), HalErr
 }
 
 fn verify_practice_sequence(
-    mut enter: impl FnMut(&str) -> Result<Zeroizing<[u8; LENGTH]>, HalError>,
+    mut enter: impl FnMut(&str) -> Result<Sequence, HalError>,
 ) -> Result<(), HalError> {
     let enrolled = enter("Practice only. Set 9 joystick actions. Mode restarts.")?;
     let mut prompt = "Repeat the 9 actions to open the sample review.";
@@ -114,41 +79,20 @@ fn verify_practice_sequence(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use panel_input::PIN_LENGTH;
 
     #[test]
     fn mismatch_requires_another_complete_entry() {
         let correct = [1, 1, 2, 4, 8, 16, 1, 2, 8];
-        let mut entries = [correct, [2; LENGTH], correct].into_iter();
+        let mut entries = [correct, [2; PIN_LENGTH], correct].into_iter();
         let mut prompts = Vec::new();
         verify_practice_sequence(|prompt| {
             prompts.push(prompt.to_owned());
-            Ok(Zeroizing::new(entries.next().unwrap()))
+            Ok(Sequence::new(entries.next().unwrap()))
         })
         .unwrap();
         assert_eq!(prompts.len(), 3);
         assert!(prompts[2].starts_with("No match"));
         assert!(entries.next().is_none());
-    }
-
-    #[test]
-    fn held_and_repeated_inputs_require_neutral() {
-        for symbol in [1, 2, 4, 8, 16, MODE] {
-            let mut g = Gesture::default();
-            let events: Vec<_> = [0, symbol, symbol, 0, 0, symbol, 0]
-                .into_iter()
-                .filter_map(|s| g.sample(s))
-                .collect();
-            assert_eq!(events, [symbol, symbol]);
-        }
-    }
-
-    #[test]
-    fn reject_overlapping_contacts_and_confirm_until_neutral() {
-        let mut g = Gesture::default();
-        let events: Vec<_> = [1, 3, 2, 0, 64, 0, MODE | 4, 0, 16, 0]
-            .into_iter()
-            .filter_map(|s| g.sample(s))
-            .collect();
-        assert_eq!(events, [16]);
     }
 }
