@@ -176,6 +176,15 @@ mod gpio {
             })
         }
 
+        /// Snapshot all active-low contacts for the timed recovery keyboard.
+        pub fn pin_contacts(&self) -> Result<u8, HalError> {
+            let mut values = Values::from_offsets(&LINES);
+            self.request.values(&mut values).map_err(gpio_error)?;
+            Ok(LINES.iter().enumerate().fold(0, |mask, (bit, line)| {
+                mask | (u8::from(values.get(*line) == Some(Value::Inactive)) << bit)
+            }))
+        }
+
         pub fn set_abort(&mut self, abort: Option<Abort>) {
             self.abort = abort;
         }

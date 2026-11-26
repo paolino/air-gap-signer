@@ -1,6 +1,7 @@
 #![no_std]
 //! Eyes-free PIN entry shared by the Pi and the front-panel controller.
 use zeroize::Zeroizing;
+pub mod token_pin;
 
 /// Prototype sequence length.
 pub const PIN_LENGTH: usize = 9;
@@ -15,7 +16,7 @@ pub enum EntryEvent {
 }
 
 /// Receives debounced switch levels. Bits 0 through 6 are up, right, down,
-/// left, centre, Mode and Confirm. Zero means all controls are released.
+/// left, unused, Mode and Confirm. Zero means all controls are released.
 #[derive(Default)]
 pub struct PinEntry {
     ready: bool,
@@ -41,7 +42,7 @@ impl PinEntry {
                 *self = Self::default();
                 return EntryEvent::Restart;
             }
-            symbol @ (1 | 2 | 4 | 8 | 16) => {
+            symbol @ (1 | 2 | 4 | 8) => {
                 self.sequence[self.used] = symbol;
                 self.used += 1;
                 if self.used == PIN_LENGTH {
@@ -67,7 +68,7 @@ mod tests {
     }
 
     fn complete(entry: &mut PinEntry) {
-        let expected = [16, 16, 1, 2, 4, 8, 1, 4, 16];
+        let expected = [8, 8, 1, 2, 4, 8, 1, 4, 2];
         for &symbol in &expected[..PIN_LENGTH - 1] {
             pending(entry, &[symbol, symbol, 0, 0]);
         }
@@ -81,7 +82,7 @@ mod tests {
     #[test]
     fn held_on_entry_chords_and_confirm_do_not_enter_symbols() {
         let mut entry = PinEntry::default();
-        pending(&mut entry, &[16, 0, 1, 3, 2, 0, 64, 0, 32 | 4, 0]);
+        pending(&mut entry, &[16, 0, 16, 0, 1, 3, 2, 0, 64, 0, 32 | 4, 0]);
         complete(&mut entry);
     }
 

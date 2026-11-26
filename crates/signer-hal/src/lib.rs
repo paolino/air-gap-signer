@@ -76,6 +76,11 @@ pub trait SecureElement {
     /// Read the public key from a slot.
     fn public_key(&self, slot: u8) -> Result<Vec<u8>, HalError>;
 
+    /// Read occupied and empty slots without authorizing key use.
+    fn public_slots(&self) -> Result<signer_core::key_menu::PublicSlots, HalError> {
+        Err(HalError::Storage("public inventory unavailable".into()))
+    }
+
     /// Import an existing seed into a slot (recovery from backup).
     /// Returns the public key.
     fn import_key(&mut self, slot: u8, seed: &[u8]) -> Result<Vec<u8>, HalError>;

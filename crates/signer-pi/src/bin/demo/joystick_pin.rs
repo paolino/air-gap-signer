@@ -6,8 +6,8 @@ use signer_hal::{Display, HalError};
 use signer_pi::buttons::{DEBOUNCE, POLL, SETTLE};
 use std::thread;
 
-// BCM line numbers in panel_input contact order.
-const LINES: [u32; 7] = [17, 23, 22, 27, 4, 6, 5];
+// BCM line and corresponding panel_input bit. GPIO4 (centre) is unused.
+const CONTACTS: [(u32, u8); 6] = [(17, 0), (23, 1), (22, 2), (27, 3), (6, 5), (5, 6)];
 
 fn gpio_error(e: gpiocdev::Error) -> HalError {
     HalError::Button(e.to_string())
@@ -20,10 +20,11 @@ struct Pad {
 
 impl Pad {
     fn open(chip: &str) -> Result<Self, HalError> {
+        let lines = CONTACTS.map(|(line, _)| line);
         let request = Request::builder()
             .on_chip(chip)
             .with_consumer("signer-pi-panel-demo")
-            .with_lines(&LINES)
+            .with_lines(&lines)
             .as_input()
             .with_bias(Bias::PullUp)
             .with_debounce_period(DEBOUNCE)
@@ -31,14 +32,14 @@ impl Pad {
             .map_err(gpio_error)?;
         Ok(Self {
             request,
-            values: Values::from_offsets(&LINES),
+            values: Values::from_offsets(&lines),
         })
     }
 
     fn down(&mut self) -> Result<u8, HalError> {
         self.request.values(&mut self.values).map_err(gpio_error)?;
-        Ok(LINES.iter().enumerate().fold(0, |mask, (bit, line)| {
-            mask | (u8::from(self.values.get(*line) == Some(Value::Inactive)) << bit)
+        Ok(CONTACTS.iter().fold(0, |mask, &(line, bit)| {
+            mask | (u8::from(self.values.get(line) == Some(Value::Inactive)) << bit)
         }))
     }
 
@@ -83,7 +84,7 @@ mod tests {
 
     #[test]
     fn mismatch_requires_another_complete_entry() {
-        let correct = [1, 1, 2, 4, 8, 16, 1, 2, 8];
+        let correct = [1, 1, 2, 4, 8, 4, 1, 2, 8];
         let mut entries = [correct, [2; PIN_LENGTH], correct].into_iter();
         let mut prompts = Vec::new();
         verify_practice_sequence(|prompt| {

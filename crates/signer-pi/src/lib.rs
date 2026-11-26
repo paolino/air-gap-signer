@@ -8,8 +8,12 @@ pub mod fido;
 pub mod flow;
 pub mod frame;
 #[cfg(target_os = "linux")]
+pub mod key_trial;
+#[cfg(target_os = "linux")]
 pub mod large_blob;
 pub mod layout;
+#[cfg(target_os = "linux")]
+pub mod recovery_pin;
 #[cfg(target_os = "linux")]
 pub mod se051;
 pub mod usb;

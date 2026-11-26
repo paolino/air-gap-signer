@@ -19,5 +19,4 @@ zeroize.workspace = true
 ed25519-dalek.workspace = true
 rand.workspace = true
 
-[dev-dependencies]
-hex = "0.4"
+hex.workspace = true

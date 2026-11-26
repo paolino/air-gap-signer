@@ -26,9 +26,9 @@ This document defines the engineering target. The direct-GPIO Pi 3B schematic an
 
 ### PIN entry on the signer
 
-After the phone recognizes the enrolled board and the signer is ready for PIN entry, the owner can cover the joystick with the other hand and enter the whole PIN by feel. Each up, right, down, left or centre click is one symbol. The owner enters the sequence using the joystick alone. Accept one unambiguous switch activation per return to neutral. Ignore holds, switch bounce and overlapping contacts until release. Never display or sound out a direction. The LCD may show identical progress dots. Entry completes automatically at the configured length. Mode lets the owner discard the whole entry and start again. Clear the buffer on submission, cancellation and interruption. Require all controls released before moving to the next interaction. A transaction still requires a fresh, separate Confirm press after review.
+After the phone recognizes the enrolled board and the signer is ready for PIN entry, the owner can cover the joystick with the other hand and enter the whole PIN by feel. Each up, right, down or left movement is one symbol. The owner enters the sequence using the joystick alone. Accept one unambiguous switch activation per return to neutral. Ignore holds, switch bounce and overlapping contacts until release. Never display or sound out a direction. The LCD may show identical progress dots. Entry completes automatically at the configured length. Mode lets the owner discard the whole entry and start again. Clear the buffer on submission, cancellation and interruption. Require all controls released before moving to the next interaction. A transaction still requires a fresh, separate Confirm press after review.
 
-The prototype target is nine actions. Five choices over nine positions give 1,953,125 possible sequences. This count assumes every sequence is available. User-chosen patterns can be easier to guess. Covering the hand limits the view of the movements. Anyone who observes the full sequence can reproduce it. The panel keeps the PIN and raw inputs local and requires the paired phone separately for signing.
+The prototype target is nine actions. Four choices over nine positions give 262,144 possible sequences. This count assumes every sequence is available. User-chosen patterns can be easier to guess. Covering the hand limits the view of the movements. Anyone who observes the full sequence can reproduce it. The panel keeps the PIN and raw inputs local and requires the paired phone separately for signing.
 
 ### Optical transport
 
@@ -51,6 +51,12 @@ The phone authenticates participation in this exact operation. The signer screen
 Assume someone learns the correct PIN and later takes the genuine signer while the owner keeps the paired phone. A standalone PIN-and-button design lets that person authorize a payment. Chip retry limits protect against guessing, and device recognition on the owner's phone authenticates the board to the owner. Neither control requires the thief to possess the phone.
 
 The signer requires a fresh response from the separately held phone for each signing request. The owner reviews the transaction on the signer and supplies the possession factor on the phone. The board must enforce this for every route to the wallet key. Replacing the paired credential or exporting a usable backup requires the existing credential or a separately held recovery credential. A factory reset that permits new enrollment must first erase access to the old wallet. The security assumption is that the owner retains the phone and recovery credential.
+
+### Evaluating a USB security token for signing
+
+A separately held FIDO2 token could supply the possession factor. Enroll a dedicated signing-approval credential during trusted setup, separate from the credential that unlocks a recovery archive. After local PIN entry, review and Confirm, have the panel request a fresh token assertion bound to the board, session, operation, wallet key and exact transaction digest. Verify the enrolled key, expected request and user-presence and user-verification flags. Consume the approval once. The existing recovery trial exercises backup decryption only.
+
+The token has no display. Its touch cannot tell the owner which board requested approval or which recipient was displayed. Keeping pre-PIN recognition requires a separate trusted verifier, such as the paired phone. A phone-free configuration would instead rely on physical custody and integrity of the panel. Before adopting token authorization for wallet keys, demonstrate enforcement on every signing path and how the production panel hosts the token while serving the laptop over USB.
 
 ### Where the phone factor is enforced
 

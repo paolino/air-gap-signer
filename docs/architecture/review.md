@@ -96,8 +96,14 @@ and Review shows `REVIEW` at the top and its branch below that.
   review — the header says how much. Signatures stay in memory until
   Done. Without a key the header says `SIGN no key` and only Done is
   offered.
-- **Keys** — PIN, create, restore, back up, export the public key; listed,
-  not yet wired to the secure element.
+- **Keys** reads the four wallet slots directly from the secure element.
+  Each occupied row shows the slot number and the first 12 hexadecimal
+  characters of the SHA-256 hash of its 32-byte public key. Press right
+  or #5 to inspect the full public key. Down steps through the digits
+  on a small display, and left returns to the slots. If the chip read
+  fails, #5 retries. On the Pi, #6 also opens Keys while waiting for
+  a transaction stick.
+
 
 ```mermaid
 stateDiagram-v2

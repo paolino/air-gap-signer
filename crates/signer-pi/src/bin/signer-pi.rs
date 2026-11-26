@@ -17,13 +17,17 @@ fn main() {
 #[cfg(target_os = "linux")]
 mod linux {
     use clap::Parser;
-    use signer_hal::{Buttons, Display, UsbMount};
+    use signer_core::key_menu::KeyMenu;
+    use signer_core::session::Signer;
+    use signer_hal::ButtonEvent;
+    use signer_hal::{Buttons, Display};
     use signer_pi::buttons::GpioButtons;
     use signer_pi::display::{find_framebuffer, FbDisplay};
-    use signer_pi::flow::{review_stick, NoKeys};
+    use signer_pi::flow::{review_stick, PiKeyInventory};
     use signer_pi::usb::{find_stick, PiUsb, STICK_REMOVED};
     use std::path::{Path, PathBuf};
 
+    const SYSFS_BLOCK: &str = "/sys/block";
     const SYSFS: &str = "/sys/class/graphics";
 
     #[derive(Parser)]
@@ -40,6 +44,11 @@ mod linux {
         /// GPIO character device
         #[arg(long, default_value = "/dev/gpiochip0")]
         chip: String,
+
+        /// Run the disposable SE051/FIDO recovery trial; directory stores the
+        /// encrypted backup and raw public key between runs.
+        #[arg(long, value_name = "DIRECTORY")]
+        practice_keys: Option<PathBuf>,
 
         /// Where the stick is mounted while it is read
         #[arg(long, default_value = "/run/signer-usb")]
@@ -77,6 +86,25 @@ mod linux {
         }
     }
 
+    impl signer_pi::recovery_pin::PinContacts for Hal {
+        fn pin_contacts(&mut self) -> Result<u8, signer_hal::HalError> {
+            self.buttons.pin_contacts()
+        }
+    }
+
+    impl signer_pi::recovery_pin::PinDisplay for Hal {
+        fn draw_keyboard(
+            &mut self,
+            keyboard: &panel_input::token_pin::Keyboard,
+            count: usize,
+            status: panel_input::token_pin::Selected,
+            highlight: bool,
+        ) -> Result<(), signer_hal::HalError> {
+            self.display
+                .draw_keyboard(keyboard, count, status, highlight)
+        }
+    }
+
     impl Buttons for Hal {
         fn wait_event(&mut self) -> Result<signer_hal::ButtonEvent, signer_hal::HalError> {
             self.buttons.wait_event()
@@ -97,6 +125,14 @@ mod linux {
         let display = FbDisplay::open(Path::new(SYSFS), &fb, cli.size).unwrap_or_else(|e| fail(e));
         let buttons = GpioButtons::open(&cli.chip).unwrap_or_else(|e| fail(e));
         let mut hal = Hal { display, buttons };
+        if let Some(dir) = cli.practice_keys {
+            if let Err(error) = signer_pi::key_trial::run(&mut hal, &dir) {
+                let message = format!("Key trial stopped: {error}");
+                let _ = hal.show_message(&message);
+                fail(message);
+            }
+            return;
+        }
         let mut usb = PiUsb::new(PathBuf::from("/sys/block"), cli.mount_point);
         loop {
             if let Err(e) = round(&mut hal, &mut usb) {
@@ -105,19 +141,58 @@ mod linux {
         }
     }
 
+    /// Open the local inventory while idle. The user can inspect keys with
+    /// no transaction stick attached. Finish an open menu before reading a stick.
+    fn wait_for_stick(hal: &mut Hal, usb: &mut PiUsb) -> Result<(), signer_hal::HalError> {
+        const INSERTED: &str = "transaction stick inserted";
+        loop {
+            if usb.poll_insert() {
+                return Ok(());
+            }
+            hal.show_message("Insert USB stick. #6 Keys")?;
+            hal.buttons.set_abort(Some(Box::new(|| {
+                find_stick(Path::new(SYSFS_BLOCK))
+                    .is_some()
+                    .then(|| signer_hal::HalError::Usb(INSERTED.into()))
+            })));
+            let event = hal.wait_event();
+            hal.buttons.set_abort(None);
+            match event {
+                Err(signer_hal::HalError::Usb(reason)) if reason == INSERTED => continue,
+                Ok(ButtonEvent::Mode) => {
+                    let mut menu =
+                        KeyMenu::new(PiKeyInventory.public_slots().ok(), hal.text_grid().1);
+                    loop {
+                        hal.show_review(&menu.view())?;
+                        let button = hal.wait_event()?;
+                        if button == ButtonEvent::Mode {
+                            break;
+                        }
+                        if menu.needs_retry() && button == ButtonEvent::Confirm {
+                            menu.refresh(PiKeyInventory.public_slots().ok());
+                        } else {
+                            menu.handle(button);
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     /// One stick: wait for it, review, show the outcome, wait for removal.
     /// Problems with the stick are shown on screen, not fatal.
     fn round(hal: &mut Hal, usb: &mut PiUsb) -> Result<(), signer_hal::HalError> {
-        hal.show_message("Insert USB stick")?;
-        usb.wait_insert()?;
+        wait_for_stick(hal, usb)?;
         hal.show_message("Reading USB stick")?;
         // Pulling the stick out ends the review at once.
         hal.buttons.set_abort(Some(Box::new(|| {
-            find_stick(Path::new("/sys/block"))
+            find_stick(Path::new(SYSFS_BLOCK))
                 .is_none()
                 .then(|| signer_hal::HalError::Usb(STICK_REMOVED.into()))
         })));
-        let result = review_stick(hal, usb, &mut NoKeys);
+        let result = review_stick(hal, usb, &mut PiKeyInventory);
         hal.buttons.set_abort(None);
         let outcome = match result {
             Err(e) if e.to_string().contains(STICK_REMOVED) => {
