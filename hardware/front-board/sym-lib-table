@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "FrontBoard") (type "KiCad") (uri "${KIPRJMOD}/FrontBoard.kicad_sym") (options "") (descr "Air Gap Signer front board"))
+)
