@@ -275,3 +275,19 @@ remain available. The file-backed credential uses the token’s
 only enrolled token makes this trial backup unrecoverable. The phone
 approval and chip policy required for actual wallet changes are separate
 work.
+
+### Chip-enforced joystick PIN bench test
+
+`se051-pin-check` uses two dedicated objects, 7DA03301 and 7DA03302, a public
+test sequence and a fresh Ed25519 test key. The funded practice key is in a
+different object. Run with the normal signer's I²C device available. The test
+locks the bus, checks that both test IDs are free before creating anything and
+verifies their absence after cleanup.
+
+On the Pi’s SE051, the chip refused a signature before authentication (6986),
+refused a changed sequence (6985), signed a random challenge after verification
+of the enrolled sequence, and refused another signature after the session
+closed (6986). The test verified the signature against the test public key.
+This tests the chip policy; personal enrollment and payment review require
+their own panel flows. The test requests five attempts at enrollment and uses
+one wrong entry. It does not exercise lockout.

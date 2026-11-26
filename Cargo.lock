@@ -2007,6 +2007,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "i2cdev",
+ "iso7816",
  "linux-embedded-hal",
  "miniz_oxide",
  "p256",
@@ -2021,6 +2022,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "unicode-normalization",
+ "zeroize",
 ]
 
 [[package]]

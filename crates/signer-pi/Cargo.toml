@@ -50,6 +50,8 @@ tempfile = "3"
 gpiocdev = "0.8"
 rustix = { version = "1", features = ["time"] }
 se05x = { version = "0.4.2", default-features = false, features = ["embedded-hal-v1.0"] }
+iso7816 = "0.2.2"
+zeroize.workspace = true
 linux-embedded-hal = { version = "0.5", default-features = false, features = ["i2c"] }
 embedded-hal = "1"
 p256 = { version = "0.13", default-features = false, features = ["ecdh", "arithmetic"] }
