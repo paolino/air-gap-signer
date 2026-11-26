@@ -1,3 +1,3 @@
 [toolchain]
 channel = "stable"
-targets = ["wasm32-unknown-unknown", "aarch64-unknown-linux-musl"]
+targets = ["wasm32-unknown-unknown", "aarch64-unknown-linux-musl", "thumbv8m.main-none-eabihf"]

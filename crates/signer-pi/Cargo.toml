@@ -30,6 +30,7 @@ name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
 [dependencies]
+panel-input = { path = "../panel-input" }
 signer-core = { path = "../signer-core" }
 signer-hal = { path = "../signer-hal" }
 fontdue = "0.9"
@@ -38,7 +39,6 @@ hex.workspace = true
 ed25519-dalek.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
-zeroize.workspace = true
 rand.workspace = true
 ciborium.workspace = true
 clap.workspace = true

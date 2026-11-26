@@ -17,7 +17,7 @@
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };
         rust = pkgs.rust-bin.stable.latest.default.override {
-          targets = [ "wasm32-unknown-unknown" "aarch64-unknown-linux-musl" ];
+          targets = [ "wasm32-unknown-unknown" "aarch64-unknown-linux-musl" "thumbv8m.main-none-eabihf" ];
         };
         # C toolchain for crates with native parts (wasmtime) when
         # cross-compiling the Pi binaries.

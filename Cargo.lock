@@ -1564,6 +1564,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "panel-input"
+version = "0.1.0"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2001,6 +2008,7 @@ dependencies = [
  "linux-embedded-hal",
  "miniz_oxide",
  "p256",
+ "panel-input",
  "rand",
  "se05x",
  "serde_json",
@@ -2010,7 +2018,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "unicode-normalization",
- "zeroize",
 ]
 
 [[package]]

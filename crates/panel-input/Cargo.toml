@@ -1,0 +1,9 @@
+[package]
+name = "panel-input"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Five-way joystick PIN entry shared by the bench and the signer panel"
+
+[dependencies]
+zeroize = { version = "1", default-features = false }
