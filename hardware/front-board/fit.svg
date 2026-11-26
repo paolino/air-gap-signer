@@ -8,13 +8,13 @@
 <rect id="lcd" x="3.74" y="4" width="84.52" height="55.26" fill="none" stroke="#718a97" stroke-width=".3" stroke-dasharray="1 .8"/>
 <rect id="display" x="9.28" y="7.15" width="73.44" height="48.96" rx=".5" fill="#223a46"/>
 <g text-anchor="middle" fill="#fff"><text x="46" y="30" font-size="4">3.5″ display</text><text x="46" y="36" font-size="2.7">480 × 320</text></g>
-<rect id="camera" x="24" y="62" width="25" height="24" rx="1" fill="none" stroke="#337963" stroke-width=".4" stroke-dasharray="1 .8"/>
-<circle cx="36.5" cy="74" r="3.6" fill="#263e46"/><circle cx="36.5" cy="74" r="2" fill="#547586"/>
-<path d="M12 67h6v4h4v6h-4v4h-6v-4H8v-6h4z" fill="#4d6066"/>
-<rect x="52" y="70" width="12" height="8" rx="2" fill="#567457"/>
-<circle cx="70" cy="74" r="4" fill="#4d6066"/>
-<circle cx="81" cy="74" r="3.5" fill="none" stroke="#66777a" stroke-width=".3" stroke-dasharray=".8 .6"/>
-<g font-size="2.4" fill="#283b43" text-anchor="middle"><text x="36.5" y="82.5">Camera</text><text x="15" y="85">Joystick</text><text x="58" y="82.5">Confirm</text><text x="70" y="82.5">Mode</text><text x="81" y="82.5">Spare*</text></g>
+<circle id="spare" cx="11" cy="74" r="3.5" fill="none" stroke="#66777a" stroke-width=".3" stroke-dasharray=".8 .6"/>
+<path id="joystick" d="M20 67h6v4h4v6h-4v4h-6v-4h-4v-6h4z" fill="#4d6066"/>
+<rect id="camera" x="33.5" y="62" width="25" height="24" rx="1" fill="none" stroke="#337963" stroke-width=".4" stroke-dasharray="1 .8"/>
+<circle id="lens" cx="46" cy="74" r="3.6" fill="#263e46"/><circle cx="46" cy="74" r="2" fill="#547586"/>
+<rect id="confirm" x="61" y="70" width="12" height="8" rx="2" fill="#567457"/>
+<circle id="mode" cx="80" cy="74" r="4" fill="#4d6066"/>
+<g font-size="2.4" fill="#283b43" text-anchor="middle"><text x="11" y="82.5">Spare*</text><text x="23" y="85">Joystick</text><text x="46" y="82.5">Camera</text><text x="67" y="82.5">Confirm</text><text x="80" y="82.5">Mode</text></g>
 </g>
 <g fill="#283b43"><text x="6" y="8.5" font-size="4" font-weight="bold">Front-panel fit study</text>
 <text x="101" y="25" font-size="3">92 × 92 lid</text><text x="101" y="31" font-size="2.5">continuous rim</text><text x="101" y="54" font-size="3">80 × 80 face</text><text x="101" y="60" font-size="2.5">blue dashes</text><text x="101" y="88" font-size="2.5">* Optional button</text>
