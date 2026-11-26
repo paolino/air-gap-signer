@@ -23,7 +23,7 @@ mod linux {
     use signer_hal::{Buttons, Display};
     use signer_pi::buttons::GpioButtons;
     use signer_pi::display::{find_framebuffer, FbDisplay};
-    use signer_pi::flow::{review_stick, PiKeyInventory};
+    use signer_pi::flow::{review_stick_with_keys, PiKeyInventory};
     use signer_pi::usb::{find_stick, PiUsb, STICK_REMOVED};
     use std::path::{Path, PathBuf};
 
@@ -141,6 +141,31 @@ mod linux {
         }
     }
 
+    fn local_keys(hal: &mut Hal, menu: &mut KeyMenu) -> Result<(), signer_hal::HalError> {
+        menu.enable_practice();
+        loop {
+            hal.show_review(&menu.view())?;
+            let button = hal.wait_event()?;
+            if button == ButtonEvent::Mode {
+                return Ok(());
+            }
+            if menu.needs_retry() && button == ButtonEvent::Confirm {
+                menu.refresh(PiKeyInventory.public_slots().ok());
+            } else if menu.handle(button) {
+                if let Err(error) =
+                    signer_pi::key_trial::menu(hal, Path::new("/var/lib/signer-pi/practice"))
+                {
+                    if let Some(signer_hal::HalError::Usb(reason)) = error.downcast_ref() {
+                        return Err(signer_hal::HalError::Usb(reason.clone()));
+                    }
+                    hal.show_message(&format!("Practice key: {error}"))?;
+                    hal.wait_event()?;
+                }
+                menu.refresh(PiKeyInventory.public_slots().ok());
+            }
+        }
+    }
+
     /// Open the local inventory while idle. The user can inspect keys with
     /// no transaction stick attached. Finish an open menu before reading a stick.
     fn wait_for_stick(hal: &mut Hal, usb: &mut PiUsb) -> Result<(), signer_hal::HalError> {
@@ -162,18 +187,7 @@ mod linux {
                 Ok(ButtonEvent::Mode) => {
                     let mut menu =
                         KeyMenu::new(PiKeyInventory.public_slots().ok(), hal.text_grid().1);
-                    loop {
-                        hal.show_review(&menu.view())?;
-                        let button = hal.wait_event()?;
-                        if button == ButtonEvent::Mode {
-                            break;
-                        }
-                        if menu.needs_retry() && button == ButtonEvent::Confirm {
-                            menu.refresh(PiKeyInventory.public_slots().ok());
-                        } else {
-                            menu.handle(button);
-                        }
-                    }
+                    local_keys(hal, &mut menu)?;
                 }
                 Ok(_) => {}
                 Err(error) => return Err(error),
@@ -192,7 +206,7 @@ mod linux {
                 .is_none()
                 .then(|| signer_hal::HalError::Usb(STICK_REMOVED.into()))
         })));
-        let result = review_stick(hal, usb, &mut PiKeyInventory);
+        let result = review_stick_with_keys(hal, usb, &mut PiKeyInventory, Some(local_keys));
         hal.buttons.set_abort(None);
         let outcome = match result {
             Err(e) if e.to_string().contains(STICK_REMOVED) => {

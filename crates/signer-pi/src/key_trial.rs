@@ -9,6 +9,7 @@ use signer_core::review::{ButtonEvent, View};
 use signer_hal::{Buttons, Display, HalError};
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 
 const TRIAL_KEY: ObjectId = ObjectId([0x7D, 0xA0, 0x32, 0x01]);
@@ -119,17 +120,106 @@ fn erase_owned(se: &mut Se051, public: &[u8; 32]) -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Action {
+    Create,
+    Restore,
+    Verify,
+    Erase,
+}
+
+fn actions(current: Option<[u8; 32]>, saved: bool) -> &'static [(&'static str, Option<Action>)] {
+    if current.is_some() {
+        &[
+            ("View public key", None),
+            ("Verify backup", Some(Action::Verify)),
+            ("Erase key", Some(Action::Erase)),
+        ]
+    } else if saved {
+        &[("Restore backup", Some(Action::Restore))]
+    } else {
+        &[("Create + back up", Some(Action::Create))]
+    }
+}
+
+/// Inspect the disposable key without entering a PIN. The owner can then
+/// open the token-backed workflow, which rechecks the chip and saved archive.
+pub fn menu(
+    hal: &mut (impl Buttons + Display + recovery_pin::PinDisplay + recovery_pin::PinContacts),
+    dir: &Path,
+) -> Result<(), Error> {
+    loop {
+        let current = {
+            let bus = File::open("/dev/i2c-1")?;
+            bus.try_lock()?;
+            Se051::open("/dev/i2c-1")?.read_public_object(TRIAL_KEY)?
+        };
+        let choices = actions(current, dir.join(ARCHIVE).try_exists()?);
+        let mut selected = 0usize;
+        let header = current
+            .map(|key| format!("Practice {}", fingerprint(&key)))
+            .unwrap_or_else(|| "Practice key: empty".into());
+        loop {
+            hal.show_review(&View::Overview {
+                header: header.clone(),
+                rows: choices
+                    .iter()
+                    .map(|(label, _)| *label)
+                    .chain(["Back"])
+                    .enumerate()
+                    .map(|(i, label)| signer_core::review::Row {
+                        text: label.into(),
+                        selected: i == selected,
+                        pending: false,
+                        waived: false,
+                    })
+                    .collect(),
+            })?;
+            match hal.wait_event()? {
+                ButtonEvent::Up => selected = (selected + choices.len()) % (choices.len() + 1),
+                ButtonEvent::Down => selected = (selected + 1) % (choices.len() + 1),
+                ButtonEvent::UpHeld => selected = selected.saturating_sub(1),
+                ButtonEvent::DownHeld => selected = (selected + 1).min(choices.len()),
+                ButtonEvent::Back | ButtonEvent::Mode => return Ok(()),
+                ButtonEvent::Open | ButtonEvent::Confirm => {
+                    let Some((_, action)) = choices.get(selected) else {
+                        return Ok(());
+                    };
+                    if let Some(action) = action {
+                        lifecycle(hal, dir, Some((*action, current)))?;
+                    } else if let Some(key) = current {
+                        show_public(hal, &key)?;
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Run again with the same directory and token after the first erase.
 pub fn run(
     hal: &mut (impl Buttons + Display + recovery_pin::PinDisplay + recovery_pin::PinContacts),
     dir: &Path,
+) -> Result<(), Error> {
+    lifecycle(hal, dir, None)
+}
+
+fn lifecycle(
+    hal: &mut (impl Buttons + Display + recovery_pin::PinDisplay + recovery_pin::PinContacts),
+    dir: &Path,
+    request: Option<(Action, Option<[u8; 32]>)>,
 ) -> Result<(), Error> {
     // Serialise all instances even when started with different archive paths.
     let bus = File::open("/dev/i2c-1")?;
     bus.try_lock()?;
     let mut se = Se051::open("/dev/i2c-1")?;
     let current = se.read_public_object(TRIAL_KEY)?;
-    fs::create_dir_all(dir)?;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
     let saved = dir.join(ARCHIVE).try_exists()?;
     let public_record = dir.join(PUBLIC);
     if !saved && (current.is_some() || public_record.try_exists()?) {
@@ -142,9 +232,20 @@ pub fn run(
         }
     }
     let restoring = saved && current.is_none();
-    let prompt = match (restoring, saved) {
-        (true, _) => "Restore disposable key from saved backup?",
-        (false, true) => "Resume disposable key trial?",
+    if let Some((action, selected)) = request {
+        if selected != current
+            || !actions(current, saved)
+                .iter()
+                .any(|(_, a)| *a == Some(action))
+        {
+            return Err("practice key or backup changed; reselect the action".into());
+        }
+    }
+    let action = request.map(|(action, _)| action);
+    let prompt = match (action, restoring, saved) {
+        (Some(Action::Erase), _, _) => "Check backup before erasing practice key?",
+        (_, true, _) => "Restore disposable key from saved backup?",
+        (_, false, true) => "Verify saved backup with token?",
         _ => "Create disposable key and encrypted backup?",
     };
     if !confirm(hal, prompt)? {
@@ -198,8 +299,21 @@ pub fn run(
     let challenge = rand::random::<[u8; 32]>();
     let signature = se.sign_object(TRIAL_KEY, &challenge)?;
     crate::se051::verify(&expected, &challenge, &signature)?;
-    show_public(hal, &expected)?;
     let label = fingerprint(&expected);
+    if let Some(action) = action {
+        if action != Action::Erase {
+            let verb = match action {
+                Action::Restore => "Restored",
+                Action::Create => "Backed up",
+                _ => "Verified",
+            };
+            hal.show_message(&format!("{verb} {label}. #5 OK"))?;
+            hal.wait_event()?;
+            return Ok(());
+        }
+    } else {
+        show_public(hal, &expected)?;
+    }
     let prompt = if restoring {
         format!("Restored {label}. Test signature verified. Erase this test key to finish?")
     } else {
@@ -213,12 +327,17 @@ pub fn run(
         return Err("saved backup changed; keeping test key".into());
     }
     erase_owned(&mut se, &expected)?;
-    let message = if restoring {
+    let message = if action == Some(Action::Erase) {
+        "Practice key erased. Backup kept. #5 OK"
+    } else if restoring {
         "Trial complete. Restored key matched. Test slot empty."
     } else {
         "Test slot empty. Restart the trial to restore the encrypted backup."
     };
     hal.show_message(message)?;
+    if action == Some(Action::Erase) {
+        hal.wait_event()?;
+    }
     println!("{message}");
     Ok(())
 }
@@ -226,6 +345,21 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn practice_actions_follow_key_and_backup_state() {
+        let labels = |key, saved| {
+            actions(key, saved)
+                .iter()
+                .map(|(s, _)| *s)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels(None, false), ["Create + back up"]);
+        assert_eq!(labels(None, true), ["Restore backup"]);
+        assert_eq!(
+            labels(Some([0; 32]), true),
+            ["View public key", "Verify backup", "Erase key"]
+        );
+    }
     struct TestToken(u8);
     impl Token for TestToken {
         fn credential_id(&self) -> Vec<u8> {

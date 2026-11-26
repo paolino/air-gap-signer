@@ -91,6 +91,10 @@ impl Session {
         }
     }
 
+    pub fn key_menu_mut(&mut self) -> &mut KeyMenu {
+        &mut self.key_menu
+    }
+
     pub fn mode(&self) -> Mode {
         self.mode
     }
