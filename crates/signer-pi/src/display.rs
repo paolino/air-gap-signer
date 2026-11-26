@@ -163,6 +163,9 @@ impl crate::recovery_pin::PinDisplay for FbDisplay {
         highlight: bool,
     ) -> Result<(), HalError> {
         use panel_input::token_pin::{Key, Selected, ROWS};
+        if status == Selected::Submit {
+            return signer_hal::Display::show_message(self, "Sent");
+        }
         static FONT: std::sync::LazyLock<TextFont> =
             std::sync::LazyLock::new(|| TextFont::mono(16.0));
         let font = &*FONT;

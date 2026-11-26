@@ -219,9 +219,10 @@ wallet slots are separate.
 Enter the recovery token’s existing PIN on the panel. Move the joystick in four directions
 to highlight a key on the QWERTY keyboard. Button #5 presses that key.
 ABC changes case, #+= shows symbols, and Accents shows accented letters.
-Holding any direction repeats movement. The selection flashes for 100 ms on
+Holding any direction repeats movement. The selection flashes for 500 ms on
 input. Space and Del edit the entry. Select the green Send key to submit, or press #6
-to cancel. Only the character count is displayed. Keep the camera off during
+to cancel. On submission the keyboard clears and “Sent” appears for 500 ms before
+the token is checked. During entry only the character count is displayed. Keep the camera off during
 entry. This PIN belongs to the FIDO token and is separate from the signer PIN.
 
 The first run creates an encrypted `practice-backup.cbor` and exports the
