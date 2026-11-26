@@ -30,6 +30,10 @@ name = "se051-policy-check"
 path = "src/bin/se051-policy-check.rs"
 
 [[bin]]
+name = "se051-scp-check"
+path = "src/bin/se051-scp-check.rs"
+
+[[bin]]
 name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
@@ -58,7 +62,9 @@ p256 = { version = "0.13", default-features = false, features = ["ecdh", "arithm
 hkdf = "0.12"
 hmac = "0.12"
 aes = "0.8"
-cbc = "0.1"
+cbc = { version = "0.1", features = ["alloc"] }
+cmac = "0.7"
+iso7816 = "0.2"
 aes-gcm = "0.10"
 miniz_oxide = "0.8"
 unicode-normalization = "0.1"
