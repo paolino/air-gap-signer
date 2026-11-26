@@ -1,3 +1,5 @@
+use usb_pack::cardano;
+
 use clap::Parser;
 use signer_core::spec::{
     HashAlgorithm, OutputSpec, SignAlgorithm, Signable, SignableSource, SigningSpec,
@@ -33,7 +35,7 @@ struct Cli {
     #[arg(long)]
     key_slot: u8,
 
-    /// Signable mode: whole, hash-blake2b, hash-sha256
+    /// Signable mode: whole, hash-blake2b, hash-sha256, cardano-body (Conway CBOR or CLI envelope)
     #[arg(long, default_value = "whole")]
     signable: String,
 
@@ -75,12 +77,22 @@ fn parse_output_mode(s: &str) -> OutputSpec {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+
+    let (payload, signable) = if cli.signable == "cardano-body" {
+        if cli.algorithm != "ed25519" {
+            return Err("Cardano payment keys use ed25519".into());
+        }
+        let (bytes, signable) = cardano::prepare(fs::read(&cli.payload)?)?;
+        (Some(bytes), signable)
+    } else {
+        (None, parse_signable(&cli.signable))
+    };
 
     let spec = SigningSpec {
         label: cli.label,
-        signable: parse_signable(&cli.signable),
+        signable,
         algorithm: parse_algorithm(&cli.algorithm),
         key_slot: cli.key_slot,
         output: parse_output_mode(&cli.output_mode),
@@ -89,7 +101,12 @@ fn main() {
     fs::create_dir_all(&cli.output).expect("failed to create output directory");
 
     // Copy payload
-    fs::copy(&cli.payload, cli.output.join("payload.bin")).expect("failed to copy payload");
+    let target = cli.output.join("payload.bin");
+    if let Some(bytes) = payload {
+        fs::write(target, bytes)?;
+    } else {
+        fs::copy(&cli.payload, target)?;
+    }
 
     // Copy interpreter
     fs::copy(&cli.interpreter, cli.output.join("interpreter.wasm"))
@@ -100,4 +117,5 @@ fn main() {
     fs::write(cli.output.join("sign.cbor"), cbor).expect("failed to write sign.cbor");
 
     eprintln!("USB stick contents written to {:?}", cli.output);
+    Ok(())
 }

@@ -2208,8 +2208,14 @@ version = "0.1.0"
 dependencies = [
  "ciborium",
  "clap",
+ "ed25519-dalek",
+ "hex",
+ "pallas-codec",
+ "pallas-primitives",
  "serde",
+ "serde_json",
  "signer-core",
+ "tempfile",
 ]
 
 [[package]]

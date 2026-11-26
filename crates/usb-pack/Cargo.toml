@@ -1,5 +1,6 @@
 [package]
 name = "usb-pack"
+default-run = "usb-pack"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,3 +15,9 @@ signer-core = { path = "../signer-core" }
 ciborium.workspace = true
 serde.workspace = true
 clap = { version = "4", features = ["derive"] }
+hex.workspace = true
+serde_json.workspace = true
+pallas-codec = "1.4"
+pallas-primitives = "1.4"
+ed25519-dalek.workspace = true
+tempfile = "3"
