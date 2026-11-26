@@ -38,6 +38,7 @@ hex.workspace = true
 ed25519-dalek.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
+zeroize.workspace = true
 rand.workspace = true
 ciborium.workspace = true
 clap.workspace = true
