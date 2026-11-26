@@ -157,6 +157,13 @@ fn actions(current: Option<[u8; 32]>, saved: bool) -> &'static [(&'static str, O
     }
 }
 
+/// Return the public key currently present in the dedicated practice object.
+pub fn current_public() -> Result<Option<[u8; 32]>, Error> {
+    let bus = File::open("/dev/i2c-1")?;
+    bus.try_lock()?;
+    Ok(Se051::open("/dev/i2c-1")?.read_public_object(TRIAL_KEY)?)
+}
+
 /// Inspect the disposable key without entering a PIN. The owner can then
 /// open the token-backed workflow, which rechecks the chip and saved archive.
 pub fn menu(
@@ -164,11 +171,7 @@ pub fn menu(
     dir: &Path,
 ) -> Result<(), Error> {
     loop {
-        let current = {
-            let bus = File::open("/dev/i2c-1")?;
-            bus.try_lock()?;
-            Se051::open("/dev/i2c-1")?.read_public_object(TRIAL_KEY)?
-        };
+        let current = current_public()?;
         let choices = actions(current, dir.join(ARCHIVE).try_exists()?);
         let mut selected = 0usize;
         let header = current
