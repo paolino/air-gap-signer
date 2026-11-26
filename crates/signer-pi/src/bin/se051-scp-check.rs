@@ -42,49 +42,7 @@
 //! a chip-enforced PIN.
 
 #[cfg(target_os = "linux")]
-mod raw {
-    use iso7816::command::{DataSource, DataStream, Writer};
-    use se05x::se05x::{Se05XCommand, Se05XResponse};
-
-    /// An inner command built byte by byte (here: with its MAC).
-    pub struct Apdu(pub Vec<u8>);
-    pub struct Reply<'a>(pub &'a [u8]);
-
-    impl DataSource for Apdu {
-        fn len(&self) -> usize {
-            self.0.len()
-        }
-        fn is_empty(&self) -> bool {
-            self.0.is_empty()
-        }
-    }
-    impl<W: Writer> DataStream<W> for Apdu {
-        fn to_writer(&self, writer: &mut W) -> Result<(), W::Error> {
-            writer.write_all(&self.0)
-        }
-    }
-    impl<W: Writer> Se05XCommand<W> for Apdu {
-        type Response<'a> = Reply<'a>;
-    }
-    impl<'a> Se05XResponse<'a> for Reply<'a> {
-        fn from_response(data: &'a [u8]) -> Result<Self, se05x::se05x::Error> {
-            Ok(Reply(data))
-        }
-    }
-
-    /// The bytes the driver would send for `command`.
-    pub fn bytes<C: for<'a> DataStream<&'a mut [u8]>>(command: &C) -> Vec<u8> {
-        let mut buf = [0u8; 512];
-        let mut writer: &mut [u8] = &mut buf[..];
-        command.to_writer(&mut writer).expect("in-memory APDU");
-        let written = 512 - writer.len();
-        buf[..written].to_vec()
-    }
-}
-
-#[cfg(target_os = "linux")]
 fn main() {
-    use raw::{bytes, Apdu};
     use se05x::se05x::commands::{
         CheckObjectExists, CloseSession, CreateSession, DeleteSecureObject, EddsaSign,
         EddsaSignResponse, ScpInitializeUpdate, VerifySessionUserId, WriteEcKey, WriteSymmKey,
@@ -94,6 +52,7 @@ fn main() {
     use se05x::se05x::{EcCurve, ObjectId, P1KeyType, Se05XResponse, SessionId, SymmKeyType};
     use signer_pi::scp03::{split, Session, C_MAC, FULL};
     use signer_pi::se051::{from_chip, verify, Se051};
+    use signer_pi::se051_raw::{bytes, Apdu};
 
     const CLEANER: ObjectId = ObjectId([0x7D, 0xA0, 0x20, 0x01]);
     const PHONE: ObjectId = ObjectId([0x7D, 0xA0, 0x20, 0x02]);

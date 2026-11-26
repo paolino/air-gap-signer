@@ -34,6 +34,10 @@ name = "se051-scp-check"
 path = "src/bin/se051-scp-check.rs"
 
 [[bin]]
+name = "se051-pin-check"
+path = "src/bin/se051-pin-check.rs"
+
+[[bin]]
 name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
