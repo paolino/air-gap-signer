@@ -26,6 +26,10 @@ name = "se051-keys"
 path = "src/bin/se051-keys.rs"
 
 [[bin]]
+name = "se051-policy-check"
+path = "src/bin/se051-policy-check.rs"
+
+[[bin]]
 name = "signer-pi"
 path = "src/bin/signer-pi.rs"
 
