@@ -12,6 +12,8 @@ use std::io::{Read, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 
+mod token_copy;
+
 const TRIAL_KEY: ObjectId = ObjectId([0x7D, 0xA0, 0x32, 0x01]);
 const ARCHIVE: &str = "practice-backup.cbor";
 const PUBLIC: &str = "practice-public.key";
@@ -126,6 +128,9 @@ enum Action {
     Restore,
     Verify,
     Erase,
+    FileToToken,
+    CopyToken,
+    RecoverFile,
 }
 
 fn actions(current: Option<[u8; 32]>, saved: bool) -> &'static [(&'static str, Option<Action>)] {
@@ -134,11 +139,21 @@ fn actions(current: Option<[u8; 32]>, saved: bool) -> &'static [(&'static str, O
             ("View public key", None),
             ("Verify backup", Some(Action::Verify)),
             ("Erase key", Some(Action::Erase)),
+            ("File to FIDO", Some(Action::FileToToken)),
+            ("Copy FIDO to FIDO", Some(Action::CopyToken)),
         ]
     } else if saved {
-        &[("Restore backup", Some(Action::Restore))]
+        &[
+            ("Restore backup", Some(Action::Restore)),
+            ("File to FIDO", Some(Action::FileToToken)),
+            ("Copy FIDO to FIDO", Some(Action::CopyToken)),
+        ]
     } else {
-        &[("Create + back up", Some(Action::Create))]
+        &[
+            ("Create + back up", Some(Action::Create)),
+            ("Copy FIDO to FIDO", Some(Action::CopyToken)),
+            ("Recover FIDO file", Some(Action::RecoverFile)),
+        ]
     }
 }
 
@@ -160,6 +175,7 @@ pub fn menu(
             .map(|key| format!("Practice {}", fingerprint(&key)))
             .unwrap_or_else(|| "Practice key: empty".into());
         loop {
+            let visible = hal.text_grid().1.saturating_sub(1).max(1);
             hal.show_review(&View::Overview {
                 header: header.clone(),
                 rows: choices
@@ -167,6 +183,8 @@ pub fn menu(
                     .map(|(label, _)| *label)
                     .chain(["Back"])
                     .enumerate()
+                    .skip((selected + 1).saturating_sub(visible))
+                    .take(visible)
                     .map(|(i, label)| signer_core::review::Row {
                         text: label.into(),
                         selected: i == selected,
@@ -185,7 +203,12 @@ pub fn menu(
                     let Some((_, action)) = choices.get(selected) else {
                         return Ok(());
                     };
-                    if let Some(action) = action {
+                    if let Some(
+                        action @ (Action::FileToToken | Action::CopyToken | Action::RecoverFile),
+                    ) = action
+                    {
+                        token_copy::run(hal, dir, *action, current)?;
+                    } else if let Some(action) = action {
                         lifecycle(hal, dir, Some((*action, current)))?;
                     } else if let Some(key) = current {
                         show_public(hal, &key)?;
@@ -353,11 +376,23 @@ mod tests {
                 .map(|(s, _)| *s)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(labels(None, false), ["Create + back up"]);
-        assert_eq!(labels(None, true), ["Restore backup"]);
+        assert_eq!(
+            labels(None, false),
+            ["Create + back up", "Copy FIDO to FIDO", "Recover FIDO file"]
+        );
+        assert_eq!(
+            labels(None, true),
+            ["Restore backup", "File to FIDO", "Copy FIDO to FIDO"]
+        );
         assert_eq!(
             labels(Some([0; 32]), true),
-            ["View public key", "Verify backup", "Erase key"]
+            [
+                "View public key",
+                "Verify backup",
+                "Erase key",
+                "File to FIDO",
+                "Copy FIDO to FIDO"
+            ]
         );
     }
     struct TestToken(u8);

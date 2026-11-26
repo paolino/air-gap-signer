@@ -222,6 +222,29 @@ slot offers **Restore backup** if an archive exists or **Create + back up**
 otherwise. The menu stores the archive under `/var/lib/signer-pi/practice`.
 Sign mode continues to select eligible wallet keys by the transaction request.
 
+### Copy a practice backup on the panel
+
+1. Open **Keys → Practice key → File to FIDO** to put the existing encrypted
+   practice archive on a token. Unlock the file with its original token. When
+   prompted for the destination, you can keep that token inserted to make it
+   a self-contained source. Touch the token whenever it flashes.
+2. Choose **Copy FIDO to FIDO**. Insert only the source token and enter its PIN
+   on the panel. Check the practice fingerprint, replace the source with the
+   destination and enter the destination’s own PIN. Confirm the save.
+3. Wait for **FIDO backup verified** and the matching fingerprint. The panel
+   rediscovers the archive from the destination and recovers the same key.
+   Each copy can serve as the source for a later copy.
+4. On a fresh practice panel choose **Recover FIDO file**, then **Restore
+   backup** with that same token. Recovery creates the encrypted local file
+   without overwriting an existing one.
+
+A destination needs a configured PIN, discoverable credentials, hmac-secret,
+PIN/UV protocol 2 and large-blob storage. The practice tool accepts one signer
+archive per token. An interruption can leave an unused credential on the
+destination. Retry with the source available and wait for verification.
+During copying, the Pi handles the recovered key in process memory. Both
+tokens connect directly to the Pi. Keep this prototype for disposable keys.
+
 For the standalone lifecycle trial, run `signer-pi --practice-keys DIRECTORY` with the display, joystick, SE051 and
 a FIDO2 recovery token attached to the Pi. Use a fresh private directory on
 persistent storage. The trial uses SE051 test object `7DA03201`. The four
