@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140mm" height="138mm" viewBox="0 0 140 138" font-family="sans-serif">
+  <title>Signer module rear mounting pattern, prototype template</title>
+  <desc>Four M4 inserts on 75 mm square centres inside a 92 mm square panel. A 50 mm scale verifies print size.</desc>
+  <rect width="140" height="138" fill="white"/>
+  <g fill="#223740">
+    <text x="9" y="8" font-size="4" font-weight="bold">Panel mounting template · rear view</text>
+    <text x="9" y="13" font-size="2.7">Prototype dimensions in mm · print at 100%</text>
+  </g>
+  <g transform="translate(12 20)" stroke="#304047" fill="none">
+    <rect width="92" height="92" rx="4" stroke-width=".35"/>
+    <rect x="8.5" y="8.5" width="75" height="75" stroke-width=".2" stroke-dasharray="1 .8"/>
+    <g stroke-width=".3">
+      <circle cx="8.5" cy="8.5" r="2.25"/><circle cx="83.5" cy="8.5" r="2.25"/>
+      <circle cx="8.5" cy="83.5" r="2.25"/><circle cx="83.5" cy="83.5" r="2.25"/>
+    </g>
+    <path d="M5 8.5h7m-3.5-3.5v7 M80 8.5h7m-3.5-3.5v7 M5 83.5h7m-3.5-3.5v7 M80 83.5h7m-3.5-3.5v7" stroke-width=".18"/>
+    <g fill="#223740" stroke="none" text-anchor="middle" font-size="3">
+      <text x="46" y="38">75 × 75 mm between centres</text>
+      <text x="46" y="45">4 × Ø4.5 in host mounting plate</text>
+      <text x="46" y="52">4 × M4 captive threads in module</text>
+      <text x="46" y="60" font-size="2.5">Outline 92 × 92 · edge to centre 8.5</text>
+    </g>
+  </g>
+  <path d="M12 121h50m-50-1.5v3m50-3v3" fill="none" stroke="#223740" stroke-width=".35"/>
+  <g fill="#223740" font-size="2.8"><text x="66" y="122">50 mm print check</text>
+    <text x="12" y="132">Surface mount. Screw engagement and cable clearance require prototype checks.</text></g>
+</svg>

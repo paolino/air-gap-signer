@@ -2,13 +2,13 @@
 
 The [secure project definition](secure-project.md) specifies the production trust boundary and release tests. The direct Pi wiring below belongs to the bench prototype.
 
-This is the first schematic and fit draft for a Pi 3 Model B plug-on board. One PCB carries a 3.5-inch landscape display, physical controls and a soldered SE051C2. The Pi supplies power and hosts the transaction USB stick. The enclosure carries a camera for reading the phone’s QR codes. On the Pi 3B rig it plugs into the existing CSI camera socket through an internal ribbon, leaving the 40-pin board connection available for the front board.
+The product is a bolt-on signer panel. The display, controls, camera, trusted controller and SE051C2 travel together on a protected rear carrier. A separate host supplies power and exchanges requests and results. An enclosure builder can mount the panel to a flat plate, a custom box or a bracket. The Pi 3B assembly is one bench host.
 
-[KiCad schematic](front-board.kicad_sch) · [1:1 fit drawing](fit.svg)
+[Panel face](fit.svg) · [1:1 mounting template](mount.svg) · [Bench KiCad schematic](front-board.kicad_sch)
 
 ## Electrical design
 
-The display candidate is Surenoo **STP0350A3-320480 NTP**, a 480 × 320 IPS panel in landscape with a 40-position, 0.5 mm flex. J2 follows its documented four-wire SPI pinout. The MSP3525 is the bench module for testing the screen size and ST7796-family driver. Confirm the bare panel's supplied revision, contact side, supply requirements and initialization with a sample before choosing J2's footprint. [Surenoo panel document](https://manuals.plus/surenoo/stp0350a3-320480-series-tft-lcd-panel-manual.pdf) · [MSP3525 bench module](https://lcdwiki.com/index.php?title=3.5inch_IPS_SPI_Module_ST7796)
+The display candidate is Surenoo **STP0350A3-320480 NTP**, a 480 × 320 IPS panel in landscape with a 40-position, 0.5 mm flex. This variant has no touch layer. J2 follows its documented four-wire SPI pinout. The MSP3525 is the bench module for testing the screen size and ST7796-family driver. Confirm the bare panel's supplied revision, contact side, supply requirements and initialization with a sample before choosing J2's footprint. [Surenoo panel document](https://manuals.plus/surenoo/stp0350a3-320480-series-tft-lcd-panel-manual.pdf) · [MSP3525 bench module](https://lcdwiki.com/index.php?title=3.5inch_IPS_SPI_Module_ST7796)
 
 | Function | Pi BCM GPIO |
 |---|---|
@@ -18,7 +18,7 @@ The display candidate is Surenoo **STP0350A3-320480 NTP**, a 480 × 320 IPS pane
 | Confirm, Mode | 5, 6 |
 | SE051 I²C SDA, SCL | 2, 3 |
 
-GPIO24 is the proposed display reset. The six active-low controls match the software at the checkout's base revision, where GPIO6 selects Mode. The navigation cluster can use discrete tactile switches or a four-way cap over them. Keep Confirm identifiable by touch. [Base button mapping](https://github.com/paolino/air-gap-signer/blob/4bd577d2685f8875e9c7e873d5bd20d3feed3cad/crates/signer-pi/src/buttons.rs#L15)
+GPIO24 is the proposed display reset. The six active-low controls match the software at the checkout's base revision, where GPIO6 selects Mode. The product needs a five-way joystick with an independent centre contact wired to the trusted panel controller. The bonnet’s centre press is GPIO4 and the current Pi button driver ignores it. Include this contact in the next schematic and input-driver revision. Keep Confirm identifiable by touch. [Base button mapping](https://github.com/paolino/air-gap-signer/blob/4bd577d2685f8875e9c7e873d5bd20d3feed3cad/crates/signer-pi/src/buttons.rs#L15)
 
 U1 uses NXP **SE051C2HQ1/Z01XD** in **SOT1969-1**. VIN, VCC, ENA and the unused ISO 7816 reset are held at 3.3 V. LA, LB, VSS and the thermal pad go to ground per the datasheet. The Pi supplies the I²C pull-ups for this draft. Probe pads expose 3.3 V, ground, SDA and SCL for bring-up. Check the footprint against the manufacturer's exact land pattern and test I²C and the absence of a contactless response at power-up on the assembled board. [NXP datasheet](https://www.nxp.com/docs/en/data-sheet/SE051.pdf) · [Package drawing](https://www.nxp.com/docs/en/package-information/SOT1969-1.pdf)
 
@@ -26,9 +26,21 @@ The panel drawing gives approximately **120 mA total** for the backlight. The sc
 
 ## Mechanical fit
 
-The front panel uses **two rows in an 80 × 80 mm interface area**. The upper row is the 3.5-inch landscape display. Across the lower row, from left to right, are the four-way joystick, optional spare button, front-facing camera, Mode and Confirm. The joystick and Confirm sit at the thumb edges. The spare and Mode button centres sit 18 mm to either side of the lens. The camera lens and active display share the horizontal centre of the 80 mm interface. Test button spacing on a full-size mock-up. Both rows sit within one continuous lid perimeter. The drawing uses a **provisional 92 × 92 mm outer outline** to accommodate the hidden 84.52 × 55.26 mm LCD module and the 85 × 56 mm Pi 3B. Its visible 73.44 × 48.96 mm image fits within the upper row. The revised front PCB, its mounts, connector cutouts and wall thickness need a stack-up check. Keep the Pi toward the USB/Ethernet and power openings, the four nominal 8 mm feet, and service access to the underside microSD socket. [1:1 fit drawing](fit.svg) · [Pi 3B mechanical drawing](https://pip-assets.raspberrypi.com/categories/520-raspberry-pi-3-model-b/documents/RP-008335-DS-1-raspberry-pi-3-b-mechanical-drawing.pdf?disposition=inline)
+The front panel uses **two rows in an 80 × 80 mm interface area**. The upper row is the 3.5-inch landscape display. Across the lower row, from left to right, are the five-way joystick, optional spare button, front-facing camera, Mode and Confirm. The joystick and Confirm sit at the thumb edges. The spare and Mode button centres sit 18 mm to either side of the lens. The camera lens and active display share the horizontal centre of the 80 mm interface. Test button spacing on a full-size mock-up. The panel has a provisional 92 × 92 mm frame around its 80 × 80 mm interface. The visible 73.44 × 48.96 mm image fits in the upper row. Mount the lens and display behind the continuous rim.
 
-**The boot microSD stays installed during ordinary use.** The owner can open the base after power-off to replace or reimage it. A spare carrying the same approved image is acceptable. The security design must let the user recognize the enrolled signer before entering a PIN and ensure that only approved signer software controls review and confirmation. These protections remain open engineering work on the Pi 3B prototype.
+### Mounting interface
+
+The proposed rear carrier has four blind M4 threaded inserts on a **75 × 75 mm square**, centred on the panel. This adopts the common 75 mm monitor-bracket pattern. The outer frame is 92 mm square, so the hole centres are 8.5 and 83.5 mm from either edge. Load passes from the inserts into the carrier and frame. The panel can be installed and removed without opening the protected assembly. On a flat host plate, mark the four centres using the template and allow nominal 4.5 mm screw-clearance holes. Check the printed 50 mm scale before using it. [Printable template](mount.svg) · [Bracket pattern reference](https://www.ergotron.com/en-us/support/vesa-standard)
+
+For release, check with an actual 75 mm bracket and a flat drilled plate. Publish the measured panel depth, rear connector position and cable clearance, mounting tolerances, screw engagement limits and suitable screw lengths for different plate thicknesses. Verify insertion stops short of the electronics and mounting loads leave the LCD and camera undisturbed. The template is for prototype layout pending these checks.
+
+### Electrical boundary for enclosure builders
+
+The panel must accept power and a documented message connection from an untrusted host. Display, PIN controls, authentication and wallet keys belong to the panel. Camera acquisition for the finished module must work with a host that has no camera socket. Select and validate an on-panel capture/decoder or bridge for the chosen sensor. The Pi CSI ribbon is a bench arrangement. Before release publish connector and mating part numbers, pinout, voltage and peak current, cable limits, and a versioned request/response description. Acceptance includes running recognition, key management and one disposable-key signing exchange on a flat mounting plate with a simple host adapter.
+
+### Pi 3B bench installation
+
+Feet, Pi ports and microSD service access below describe the existing bench box. Host enclosure builders choose their own compute board, ports, storage and supports. The bench card stays installed during normal use.
 
 Mount the Pi to the base on its four standoffs and support the front board independently on enclosure rails or bosses. Fasten it from the back or the edges, clear of each plug path. The 40-pin connection mates directly through a socket stack with full pin engagement. Start with **20 mm from the top of the Pi PCB to the underside of the front PCB**, leaving **4 mm nominal** over the Pi's 16 mm USB stacks before subtracting any underside parts, solder or tolerance. Verify the socket height and keep protruding parts and fasteners out of that overhead clearance. Use removable front-board fixings so the Pi's internal CSI and DSI ribbon latches remain serviceable.
 
