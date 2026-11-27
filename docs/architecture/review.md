@@ -93,7 +93,10 @@ and Review shows `REVIEW` at the top and its branch below that.
   signature at once (`SIGNED slot 0`); #5 again removes it. There is no
   confirmation and no reject: the toggle is the undo, and Done with no
   signature signs nothing. Adding is refused while anything is left to
-  review — the header says how much. Signatures stay in memory until
+  review. Each unread field counts once. Press #5 on the key to read those
+  fields in order. Each #5 advances one page. Left returns to Sign. The
+  last page returns to Sign ready, where signing requires a fresh press.
+  Signatures stay in memory until
   Done. Without a key the header says `SIGN no key` and only Done is
   offered.
 - **Keys** reads the four wallet slots directly from the secure element.
