@@ -68,13 +68,44 @@ fn fingerprint(key: &[u8; 32]) -> String {
 }
 
 fn confirm(hal: &mut (impl Buttons + Display), message: &str) -> Result<bool, HalError> {
-    hal.show_message(&format!("{message}\n#5 yes  #6 exit"))?;
-    loop {
-        match hal.wait_event()? {
-            ButtonEvent::Confirm => return Ok(true),
-            ButtonEvent::Mode | ButtonEvent::Back | ButtonEvent::Reject => return Ok(false),
-            _ => {}
+    let (cols, height) = hal.text_grid();
+    if cols < signer_core::review::MIN_COLS || height < signer_core::review::MIN_ROWS {
+        return Err(HalError::Display(
+            "Screen too small for confirmation".into(),
+        ));
+    }
+    let lines: Vec<_> = message
+        .lines()
+        .flat_map(|line| crate::layout::wrap_message(line, cols))
+        .collect();
+    // Reserve the heading, a blank separator and the bottom row of actions.
+    let mut pages = lines.chunks(height - 3).peekable();
+    while let Some(page) = pages.next() {
+        let last = pages.peek().is_none();
+        hal.show_review(&confirmation_page(page, cols, height, last))?;
+        loop {
+            match hal.wait_event()? {
+                ButtonEvent::Confirm if last => return Ok(true),
+                ButtonEvent::Confirm => break,
+                ButtonEvent::Mode | ButtonEvent::Back | ButtonEvent::Reject => return Ok(false),
+                _ => {}
+            }
         }
+    }
+    Ok(false)
+}
+
+fn confirmation_page(page: &[String], cols: usize, height: usize, last: bool) -> View {
+    let mut rows = page.to_vec();
+    rows.resize(height - 2, String::new());
+    let action = if last { "#5 Yes" } else { "#5 Next" };
+    rows.push(format!(
+        "{action:<width$}#6 Exit",
+        width = cols - "#6 Exit".len()
+    ));
+    View::Detail {
+        header: "Confirm".into(),
+        rows,
     }
 }
 
@@ -403,6 +434,23 @@ fn lifecycle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn confirmation_actions_have_a_separate_bottom_row_at_each_grid_size() {
+        for (cols, height) in [(16, 4), (21, 11)] {
+            let body = vec!["Erase key?".to_string(); height - 3];
+            for (last, action) in [(false, "#5 Next"), (true, "#5 Yes")] {
+                let View::Detail { rows, .. } = confirmation_page(&body, cols, height, last) else {
+                    panic!("expected a question with a footer");
+                };
+                assert_eq!(&rows[..body.len()], &body);
+                assert_eq!(rows[height - 3], "");
+                let footer = &rows[height - 2];
+                assert_eq!(footer.len(), cols);
+                assert!(footer.starts_with(action) && footer.ends_with("#6 Exit"));
+            }
+        }
+    }
+
     #[test]
     fn practice_actions_follow_key_and_backup_state() {
         let labels = |key, saved| {
