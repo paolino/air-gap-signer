@@ -349,6 +349,11 @@ confirm the system prompt. The panel accepts one laptop. The OS retains its
 Bluetooth bond and the CLI pins the board's payment verification key. The
 joystick signing PIN is entered only on the panel.
 
+If the laptop forgets the Bluetooth device, reopen pairing with **#5** and
+run `signer pair` again. The client reconnects to its saved device and checks
+the payment verification key against the existing enrollment. Keep
+`panel.json` when repairing a lost bond.
+
 Place the preprod `plan.json` described above beside the transaction or use
 `--plan PATH`. Review the payment and confirm on the panel. The CLI verifies
 the witness against your enrolled key and the original body before creating

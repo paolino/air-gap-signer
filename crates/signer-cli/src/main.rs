@@ -39,13 +39,22 @@ enum Command {
         out: PathBuf,
     },
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 struct Peer {
     device: String,
     key: [u8; 32],
 }
 
-async fn connect(known: Option<&str>) -> Result<Peripheral> {
+enum Connection<'a> {
+    Pair(Option<&'a str>),
+    Sign(&'a str),
+}
+
+async fn connect(request: Connection<'_>) -> Result<Peripheral> {
+    let known = match request {
+        Connection::Pair(id) => id,
+        Connection::Sign(id) => Some(id),
+    };
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
     let adapter = adapters
@@ -108,7 +117,7 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
     // BlueZ may request authentication while opening the link. Pair through
     // the same session that owns the comparison agent before opening GATT.
     #[cfg(target_os = "linux")]
-    if known.is_none() {
+    if matches!(request, Connection::Pair(_)) {
         pair_os(&session, &device).await?;
     }
     if !device.is_connected().await? {
@@ -211,7 +220,7 @@ async fn sign(peer: &Peer, body: &Path, plan: Option<PathBuf>, out: &Path) -> Re
     let plan = fs::read(plan.unwrap_or_else(|| body.with_file_name("plan.json")))?;
     let request = signer_link::encode(&payload, &plan)?;
     let tag = signer_link::id(&request);
-    let device = connect(Some(&peer.device)).await?;
+    let device = connect(Connection::Sign(&peer.device)).await?;
     if public_key(&device).await? != peer.key {
         return Err("paired payment key has changed".into());
     }
@@ -250,6 +259,40 @@ async fn sign(peer: &Peer, body: &Path, plan: Option<PathBuf>, out: &Path) -> Re
     }
 }
 
+fn enrolled_peer(path: &Path) -> Result<Option<Peer>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn remember_peer(path: &Path, peer: &Peer) -> Result<()> {
+    let check = |saved: Peer| -> Result<()> {
+        if saved == *peer {
+            Ok(())
+        } else {
+            Err("panel identity or payment verification key differs from your enrollment".into())
+        }
+    };
+    if let Some(saved) = enrolled_peer(path)? {
+        return check(saved);
+    }
+    let dir = path.parent().ok_or("missing enrollment directory")?;
+    fs::create_dir_all(dir)?;
+    let mut file = tempfile::NamedTempFile::new_in(dir)?;
+    serde_json::to_writer(&mut file, peer)?;
+    file.flush()?;
+    file.as_file().sync_all()?;
+    match file.persist_noclobber(path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
+            check(enrolled_peer(path)?.ok_or("enrollment changed during pairing")?)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -258,29 +301,21 @@ async fn main() -> Result<()> {
     let path = dirs.config_dir().join("panel.json");
     match cli.command {
         Command::Pair => {
-            if path.exists() {
-                return Err(
-                    format!("already enrolled; configuration is {}", path.display()).into(),
-                );
-            }
+            let enrolled = enrolled_peer(&path)?;
             eprintln!("On the idle panel press #5 to open pairing. Confirm the same code on both devices.");
-            let device = timeout(Duration::from_secs(90), connect(None)).await??;
+            let request = Connection::Pair(enrolled.as_ref().map(|p| p.device.as_str()));
+            let device = timeout(Duration::from_secs(90), connect(request)).await??;
             #[cfg(target_os = "windows")]
             timeout(Duration::from_secs(75), pair_os(&device)).await??;
             let key=timeout(Duration::from_secs(75),public_key(&device)).await?
-                .map_err(|e|format!("authenticated read failed ({e}); complete pairing in system Bluetooth settings and retry"))?;
-            fs::create_dir_all(dirs.config_dir())?;
-            let mut f = tempfile::NamedTempFile::new_in(dirs.config_dir())?;
-            serde_json::to_writer(
-                &mut f,
+                .map_err(|e|format!("authenticated read failed ({e}); check that this SD carries the panel’s enrolled public key and that pairing completed"))?;
+            remember_peer(
+                &path,
                 &Peer {
                     device: device.id().to_string(),
                     key,
                 },
             )?;
-            f.flush()?;
-            f.as_file().sync_all()?;
-            f.persist_noclobber(path)?;
             println!("Paired. Payment verification key {}", hex::encode(key));
         }
         Command::Sign { tx_body, plan, out } => {
@@ -290,4 +325,27 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn repairing_preserves_the_original_device_and_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("panel.json");
+        let mut peer = Peer {
+            device: "panel".into(),
+            key: [1; 32],
+        };
+        remember_peer(&path, &peer).unwrap();
+        let before = fs::read(&path).unwrap();
+        remember_peer(&path, &peer).unwrap();
+        peer.key = [2; 32];
+        assert!(remember_peer(&path, &peer).is_err());
+        peer.key = [1; 32];
+        peer.device = "another panel".into();
+        assert!(remember_peer(&path, &peer).is_err());
+        assert_eq!(fs::read(path).unwrap(), before);
+    }
 }
