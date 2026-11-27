@@ -386,3 +386,12 @@ records live in `/var/lib/signer-pi/practice`; preserve them when preparing a
 replacement card. The image itself contains no operator credentials. The Pi 3
 has no battery-backed clock, so check its time before testing an expiring
 preprod transaction.
+
+As soon as Linux exposes the bonnet framebuffer, it shows the current boot
+operation, elapsed time, and estimated seconds to Bluetooth readiness. The
+display refreshes every five seconds and on stage changes. Initial estimates
+are 180 seconds for first-boot setup and 60 seconds for an ordinary boot.
+The panel uses a recorded normal startup time when available and shows how
+far an estimate has been exceeded. Firmware execution before the SPI display
+driver loads has no output on the bonnet. The same updates are available in
+the kernel log under `signer-boot`.

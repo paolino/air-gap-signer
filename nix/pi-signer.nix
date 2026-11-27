@@ -12,10 +12,10 @@ in platform.buildRustPackage {
   nativeBuildInputs = [ piCc ];
   buildPhase = ''
     runHook preBuild
-    cargo build --frozen --release --target aarch64-unknown-linux-musl -p signer-pi --bin signer-pi -j "$NIX_BUILD_CORES"
+    cargo build --frozen --release --target aarch64-unknown-linux-musl -p signer-pi --bin signer-pi --bin signer-boot-status -j "$NIX_BUILD_CORES"
     runHook postBuild
   '';
   doCheck = false; # Hardware executable; native workspace tests run with just ci.
   dontStrip = true;
-  installPhase = "install -Dm755 target/aarch64-unknown-linux-musl/release/signer-pi $out/bin/signer-pi";
+  installPhase = "install -Dm755 -t $out/bin target/aarch64-unknown-linux-musl/release/{signer-pi,signer-boot-status}";
 }

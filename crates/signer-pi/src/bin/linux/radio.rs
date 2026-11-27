@@ -2,15 +2,11 @@ use super::*;
 pub(super) fn run_bluetooth(
     hal: &mut Hal,
     usb: &mut PiUsb,
+    radio: signer_pi::bluetooth::Radio,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use signer_hal::HalError;
-    use signer_pi::bluetooth::{self, Event};
+    use signer_pi::bluetooth::Event;
     let keys = Path::new("/var/lib/signer-pi/practice");
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()?;
-    let radio = runtime.block_on(bluetooth::start(keys))?;
     let panel = radio.panel.clone();
     loop {
         if let Some(event) = panel.take() {

@@ -126,6 +126,26 @@ mod linux {
 
     pub fn main() {
         let cli = Cli::parse();
+        let _runtime;
+        let radio = if cli.bluetooth {
+            signer_pi::boot::phase("radio");
+            _runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap_or_else(|e| fail(e));
+            let keys = Path::new("/var/lib/signer-pi/practice");
+            Some(
+                _runtime
+                    .block_on(signer_pi::bluetooth::start(keys))
+                    .unwrap_or_else(|e| fail(e)),
+            )
+        } else {
+            None
+        };
+        if radio.is_some() {
+            signer_pi::boot::phase("panel");
+        }
         let fb = cli
             .fb
             .or_else(|| find_framebuffer(Path::new(SYSFS), "fb_st7789v"))
@@ -153,8 +173,9 @@ mod linux {
             return;
         }
         let mut usb = PiUsb::new(PathBuf::from("/sys/block"), cli.mount_point);
-        if cli.bluetooth {
-            radio::run_bluetooth(&mut hal, &mut usb).unwrap_or_else(|e| fail(e));
+        if let Some(radio) = radio {
+            signer_pi::boot::ready();
+            radio::run_bluetooth(&mut hal, &mut usb, radio).unwrap_or_else(|e| fail(e));
             return;
         }
         loop {

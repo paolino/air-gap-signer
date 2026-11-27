@@ -3,6 +3,8 @@
 
 #[cfg(target_os = "linux")]
 pub mod bluetooth;
+#[cfg(target_os = "linux")]
+pub mod boot;
 pub mod buttons;
 pub mod display;
 #[cfg(target_os = "linux")]

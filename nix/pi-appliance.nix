@@ -14,6 +14,24 @@ in
   boot.loader.grub.enable = false;
   boot.loader.generic-extlinux-compatible.enable = true;
   boot.initrd.availableKernelModules = [ "mmc_block" "sdhci_iproc" "bcm2835" ];
+  boot.initrd.kernelModules = [ "spi-bcm2835" "fb_st7789v" ];
+  boot.initrd.extraUtilsCommands = ''
+    cp ${signer}/bin/signer-boot-status $out/bin/
+  '';
+  boot.initrd.preDeviceCommands = ''
+    echo devices > /run/signer-boot-phase
+    signer-boot-status </dev/null >/dev/null 2>&1 &
+  '';
+  boot.initrd.postDeviceCommands = "echo mount > /run/signer-boot-phase";
+  boot.initrd.preFailCommands = "echo failed > /run/signer-boot-phase";
+  boot.postBootCommands = lib.mkMerge [
+    (lib.mkBefore ''
+      if [ -f /nix-path-registration ]; then
+        echo first > /run/signer-boot-phase
+      fi
+    '')
+    (lib.mkAfter "echo services > /run/signer-boot-phase")
+  ];
   boot.initrd.allowMissingModules = true;
   boot.kernelModules = [ "i2c-dev" "fb_st7789v" "brcmfmac" ];
   hardware.enableAllHardware = lib.mkForce false;
@@ -57,7 +75,19 @@ in
     firmwareSize = 128;
     firmwarePartitionName = "SIGNERBOOT";
     rootVolumeLabel = "SIGNERROOT";
-    populateRootCommands = "mkdir -p files/var/lib/signer-appliance";
+    populateRootCommands = ''
+      mkdir -p files/var/lib/signer-appliance
+      cat > files/signer-init <<'INIT'
+      #!${pkgs.runtimeShell}
+      if [ -f /nix-path-registration ]; then
+        : > /run/signer-first-boot
+      fi
+      echo activation > /run/signer-boot-phase
+      ${signer}/bin/signer-boot-status </dev/null >/dev/null 2>&1 &
+      exec ${config.system.build.toplevel}/init
+      INIT
+      chmod 755 files/signer-init
+    '';
     populateFirmwareCommands = ''
       mkdir -p firmware/overlays
       cp ${pkgs.raspberrypifw}/share/raspberrypi/boot/{bootcode.bin,start.elf,fixup.dat} firmware/
@@ -76,7 +106,7 @@ in
       dtparam=spi=on
       dtoverlay=minipitft13,rotate=0
       CONFIG
-      echo 'init=${config.system.build.toplevel}/init root=LABEL=SIGNERROOT rootfstype=ext4 rootwait ${lib.concatStringsSep " " config.boot.kernelParams}' > firmware/cmdline.txt
+      echo 'init=/signer-init root=LABEL=SIGNERROOT rootfstype=ext4 rootwait ${lib.concatStringsSep " " config.boot.kernelParams}' > firmware/cmdline.txt
     '';
   };
 }
