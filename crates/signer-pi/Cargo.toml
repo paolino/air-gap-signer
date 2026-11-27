@@ -66,3 +66,7 @@ aes-gcm = "0.10"
 miniz_oxide = "0.8"
 unicode-normalization = "0.1"
 i2cdev = "0.6"
+signer-link = { path = "../signer-link" }
+bluer = { version = "0.17.4", features = ["bluetoothd"] }
+dbus = { version = "0.9", features = ["vendored"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }

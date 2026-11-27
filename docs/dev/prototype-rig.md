@@ -330,3 +330,59 @@ and enter the nine-move PIN. Select Done to write `payment.signature`.
 The host verifies the signature with `cardano-witness`, assembles the
 transaction and submits it separately. The ordinary USB preview and its
 untrusted interpreter cannot reach this bench signing path.
+
+### Request a preprod witness over Bluetooth
+
+Run the appliance with `signer-pi --bluetooth`. At its idle screen press **#5 Pair laptop**.
+On the laptop install the Rust client with `cargo install --locked --path crates/signer-cli`
+from the checkout or use a native build of the `signer` executable.
+
+```console
+signer pair
+signer sign --tx-body payment.txbody --out payment.witness
+```
+
+Pairing opens for 60 seconds. Compare the six digits on both screens. On
+Linux type `yes` at the CLI prompt and confirm on the board. Windows uses
+the system pairing dialog. On macOS allow Bluetooth for your terminal and
+confirm the system prompt. The panel accepts one laptop. The OS retains its
+Bluetooth bond and the CLI pins the board's payment verification key. The
+joystick signing PIN is entered only on the panel.
+
+Place the preprod `plan.json` described above beside the transaction or use
+`--plan PATH`. Review the payment and confirm on the panel. The CLI verifies
+the witness against your enrolled key and the original body before creating
+the output file. Assemble and submit separately. The panel accepts the same
+one-input, ADA-only preprod self-payment as the staged bench path. The laptop
+supplies the resolved input and chain-tip context. Check the Pi clock before
+reviewing a time-limited payment.
+
+After a disconnect, repeat the identical command to collect the in-progress
+or completed result. The panel retains its most recent result in memory until
+another transaction is accepted or the service restarts. After either event,
+resending a previous request needs a fresh physical review and PIN. Existing
+witness files are protected against overwrites.
+
+The protocol uses an advertised BLE GATT service, authenticated encrypted
+reads/writes, 20-byte maximum write frames and one pending review. Key
+management stays accessible with #6. An inserted transaction stick takes
+the panel into USB review; remove it to return to the idle pairing screen.
+
+### Spare NixOS card for the Pi 3 Model B
+
+Build `nixosConfigurations.signer-pi.config.system.build.sdImage` with
+`nix build .#nixosConfigurations.signer-pi.config.system.build.sdImage`.
+The Rust executable builds on x86_64 Linux for aarch64 musl. Nix also needs
+an aarch64 Linux builder or a configured aarch64 emulator for image assembly.
+The compressed disk image is under `result/sd-image/`.
+
+The image boots the local signer and enables the Bluetooth controller.
+For bench administration it provides the `Signer-Pi` Wi-Fi network at
+`10.42.0.1`. Provision a unique WPA passphrase in
+`/var/lib/signer-appliance/wifi-passphrase` and an SSH public key in
+`/root/.ssh/authorized_keys` on the card's Linux filesystem. Keep those
+files private. For an existing bench board, its encrypted backup and public
+records live in `/var/lib/signer-pi/practice`; preserve them when preparing a
+replacement card. The image itself contains no operator credentials. The Pi 3
+has no battery-backed clock, so check its time before testing an expiring
+preprod transaction.

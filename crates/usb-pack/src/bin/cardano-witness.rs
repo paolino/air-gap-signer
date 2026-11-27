@@ -1,10 +1,6 @@
 //! Verify the panel's public output before converting it to a Conway key witness.
 use clap::Parser;
-use ed25519_dalek::{Signature, VerifyingKey};
-use serde_json::json;
-use signer_core::crypto::extract_signable;
-use std::{error::Error, fs, io::Write, path::PathBuf};
-use usb_pack::cardano;
+use std::{error::Error, fs, path::PathBuf};
 
 #[derive(Parser)]
 struct Cli {
@@ -24,34 +20,13 @@ struct Cli {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
-    let (payload, signable) = cardano::prepare(fs::read(cli.payload)?)?;
-    let digest = extract_signable(&payload, &signable)?;
-    let key: [u8; 32] = fs::read(cli.public_key)?
+    let key = fs::read(cli.public_key)?
         .try_into()
         .map_err(|_| "expected 32-byte verification key")?;
-    let signature = Signature::from_slice(&fs::read(cli.signature)?)?;
-    VerifyingKey::from_bytes(&key)?.verify_strict(&digest, &signature)?;
-
-    let mut witness = Vec::new();
-    pallas_codec::minicbor::Encoder::new(&mut witness)
-        .array(2)?
-        .bytes(&key)?
-        .bytes(&signature.to_bytes())?;
-    let envelope = json!({
-        "type": "TxWitness ConwayEra",
-        "description": "Key Witness ShelleyEra",
-        "cborHex": hex::encode(witness),
-    });
-    let dir = cli
-        .output
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(std::path::Path::new("."));
-    let mut file = tempfile::NamedTempFile::new_in(dir)?;
-    serde_json::to_writer_pretty(file.as_file_mut(), &envelope)?;
-    writeln!(file)?;
-    file.as_file().sync_all()?;
-    file.persist_noclobber(cli.output)?;
-    println!("Verified witness for {}", hex::encode(digest));
-    Ok(())
+    usb_pack::witness::write_verified(
+        fs::read(cli.payload)?,
+        key,
+        &fs::read(cli.signature)?,
+        &cli.output,
+    )
 }

@@ -34,3 +34,15 @@ jobs:
 
       - name: Build docs
         run: nix develop --quiet -c just build-docs
+
+  desktop-client:
+    name: Bluetooth CLI on ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo build --locked --release -p signer-cli
+      - run: cargo test --locked -p signer-link -p usb-pack
+      - run: cargo run --locked --release -p signer-cli -- sign --help

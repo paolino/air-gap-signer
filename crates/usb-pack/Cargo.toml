@@ -11,7 +11,7 @@ name = "usb-pack"
 path = "src/main.rs"
 
 [dependencies]
-signer-core = { path = "../signer-core" }
+signer-core = { path = "../signer-core", default-features = false }
 ciborium.workspace = true
 serde.workspace = true
 clap = { version = "4", features = ["derive"] }

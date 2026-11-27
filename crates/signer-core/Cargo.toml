@@ -5,12 +5,16 @@ edition.workspace = true
 license.workspace = true
 description = "Pure logic — spec types, WASM sandbox, hash extraction, display"
 
+[features]
+default = ["wasm-sandbox"]
+wasm-sandbox = ["dep:wasmtime"]
+
 [dependencies]
 ciborium.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-wasmtime.workspace = true
+wasmtime = { workspace = true, optional = true }
 blake2.workspace = true
 sha2.workspace = true
 sha3.workspace = true

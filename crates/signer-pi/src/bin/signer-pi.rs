@@ -54,6 +54,10 @@ mod linux {
         #[arg(long, value_name = "DIRECTORY", conflicts_with = "practice_keys")]
         preprod_payment: Option<PathBuf>,
 
+        /// Advertise the authenticated Bluetooth interface while idle.
+        #[arg(long, conflicts_with_all = ["practice_keys", "preprod_payment"])]
+        bluetooth: bool,
+
         /// Where the stick is mounted while it is read
         #[arg(long, default_value = "/run/signer-usb")]
         mount_point: PathBuf,
@@ -149,12 +153,18 @@ mod linux {
             return;
         }
         let mut usb = PiUsb::new(PathBuf::from("/sys/block"), cli.mount_point);
+        if cli.bluetooth {
+            radio::run_bluetooth(&mut hal, &mut usb).unwrap_or_else(|e| fail(e));
+            return;
+        }
         loop {
             if let Err(e) = round(&mut hal, &mut usb) {
                 fail(e);
             }
         }
     }
+
+    mod radio;
 
     fn local_keys(hal: &mut Hal, menu: &mut KeyMenu) -> Result<(), signer_hal::HalError> {
         menu.enable_practice();

@@ -67,7 +67,7 @@ fn fingerprint(key: &[u8; 32]) -> String {
     hex::encode(&Sha256::digest(key)[..6])
 }
 
-fn confirm(hal: &mut (impl Buttons + Display), message: &str) -> Result<bool, HalError> {
+pub fn confirm(hal: &mut (impl Buttons + Display), message: &str) -> Result<bool, HalError> {
     let (cols, height) = hal.text_grid();
     if cols < signer_core::review::MIN_COLS || height < signer_core::review::MIN_ROWS {
         return Err(HalError::Display(
