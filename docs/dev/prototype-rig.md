@@ -291,3 +291,22 @@ closed (6986). The test verified the signature against the test public key.
 This tests the chip policy; personal enrollment and payment review require
 their own panel flows. The test requests five attempts at enrollment and uses
 one wrong entry. It does not exercise lockout.
+
+### Enroll the funded practice key on the Pi
+
+With the external camera off and the original recovery token inserted, open
+**Keys → Practice key → Enroll signing PIN**. Enter the token PIN using the
+keyboard, then touch the token to unlock the existing backup. Choose nine
+joystick moves and repeat them. Release between moves. The center is unused
+and #6 cancels entry. The SE051 enrollment requests a five-attempt limit.
+
+The panel imports the same key into a separate PIN-protected chip object. It
+checks that an unauthenticated session is refused and verifies a signature over
+a random challenge against the saved public key. It then displays the key
+fingerprint and asks whether to erase the old unprotected copy. Press #5 to
+remove it or #6 to keep it. An old copy still in the chip can still sign
+without the new PIN. **Finish PIN setup** resumes an interrupted migration.
+After removal, **Check signing PIN** repeats the challenge test with the
+enrolled sequence. The encrypted FIDO backup remains available for recovery.
+This operation does not sign a transaction. The Linux Pi is the bench controller
+and receives the sequence and decrypted backup in its own memory.

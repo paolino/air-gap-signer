@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 
+mod pin_enrollment;
 mod token_copy;
 
 const TRIAL_KEY: ObjectId = ObjectId([0x7D, 0xA0, 0x32, 0x01]);
@@ -124,6 +125,7 @@ fn erase_owned(se: &mut Se051, public: &[u8; 32]) -> Result<(), Error> {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Action {
+    EnrollPin,
     Create,
     Restore,
     Verify,
@@ -137,6 +139,7 @@ fn actions(current: Option<[u8; 32]>, saved: bool) -> &'static [(&'static str, O
     if current.is_some() {
         &[
             ("View public key", None),
+            ("Enroll signing PIN", Some(Action::EnrollPin)),
             ("Verify backup", Some(Action::Verify)),
             ("Erase key", Some(Action::Erase)),
             ("File to FIDO", Some(Action::FileToToken)),
@@ -171,8 +174,27 @@ pub fn menu(
     dir: &Path,
 ) -> Result<(), Error> {
     loop {
-        let current = current_public()?;
-        let choices = actions(current, dir.join(ARCHIVE).try_exists()?);
+        use pin_enrollment::Phase;
+        let (phase, current) = {
+            let bus = File::open("/dev/i2c-1")?;
+            bus.try_lock()?;
+            pin_enrollment::inspect(&mut Se051::open("/dev/i2c-1")?, dir)?
+        };
+        let choices: &[(&str, Option<Action>)] = match phase {
+            Phase::Legacy => actions(current, dir.join(ARCHIVE).try_exists()?),
+            Phase::Pending => &[
+                ("Finish PIN setup", Some(Action::EnrollPin)),
+                ("View public key", None),
+                ("File to FIDO", Some(Action::FileToToken)),
+                ("Copy FIDO to FIDO", Some(Action::CopyToken)),
+            ],
+            Phase::Protected => &[
+                ("Check signing PIN", Some(Action::EnrollPin)),
+                ("View public key", None),
+                ("File to FIDO", Some(Action::FileToToken)),
+                ("Copy FIDO to FIDO", Some(Action::CopyToken)),
+            ],
+        };
         let mut selected = 0usize;
         let header = current
             .map(|key| format!("Practice {}", fingerprint(&key)))
@@ -206,7 +228,13 @@ pub fn menu(
                     let Some((_, action)) = choices.get(selected) else {
                         return Ok(());
                     };
-                    if let Some(
+                    if *action == Some(Action::EnrollPin) {
+                        pin_enrollment::run(
+                            hal,
+                            dir,
+                            current.ok_or("missing practice public key")?,
+                        )?;
+                    } else if let Some(
                         action @ (Action::FileToToken | Action::CopyToken | Action::RecoverFile),
                     ) = action
                     {
@@ -241,7 +269,10 @@ fn lifecycle(
     let bus = File::open("/dev/i2c-1")?;
     bus.try_lock()?;
     let mut se = Se051::open("/dev/i2c-1")?;
-    let current = se.read_public_object(TRIAL_KEY)?;
+    let (phase, current) = pin_enrollment::inspect(&mut se, dir)?;
+    if phase != pin_enrollment::Phase::Legacy {
+        return Err("use the PIN-protected practice menu".into());
+    }
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
@@ -391,6 +422,7 @@ mod tests {
             labels(Some([0; 32]), true),
             [
                 "View public key",
+                "Enroll signing PIN",
                 "Verify backup",
                 "Erase key",
                 "File to FIDO",
