@@ -58,13 +58,15 @@ in
       };
     };
   };
+  systemd.services.hostapd.unitConfig.ConditionPathExists = "/var/lib/signer-appliance/wifi-passphrase";
   networking.firewall.interfaces.wlan0 = { allowedTCPPorts = [ 22 ]; allowedUDPPorts = [ 67 ]; };
   services.openssh = { enable = true; openFirewall = false; settings = { PasswordAuthentication = false; KbdInteractiveAuthentication = false; PermitRootLogin = "prohibit-password"; }; };
   systemd.services.signer-pi = {
     description = "Cardano signer with physical panel approval";
     wantedBy = [ "multi-user.target" ];
-    after = [ "systemd-networkd.service" ];
-    path = [ pkgs.util-linux ];
+    after = [ "systemd-networkd.service" "bluetooth.service" ];
+    wants = [ "bluetooth.service" ];
+    path = [ pkgs.util-linux pkgs.coreutils ];
     serviceConfig = {
       ExecStart = "${signer}/bin/signer-pi --bluetooth";
       Restart = "always"; RestartSec = 3;

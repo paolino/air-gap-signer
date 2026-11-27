@@ -6,7 +6,7 @@ use bluer::{
     gatt::local::*,
     Adapter, Address,
 };
-use signer_link::{Id, Mailbox, KEY, REQUEST, RESULT, SERVICE};
+use signer_link::{Id, Mailbox, CLOCK, KEY, REQUEST, RESULT, SERVICE};
 use std::{
     error::Error,
     fs,
@@ -20,6 +20,7 @@ use tokio::sync::watch;
 pub enum Event {
     Compare(u32, watch::Sender<bool>),
     Review(Vec<u8>),
+    Clock { unix: u64, received: Instant },
 }
 #[derive(Default)]
 struct State {
@@ -119,6 +120,13 @@ fn read_characteristic(
                             return Err(ReqError::Failed);
                         }
                         key
+                    } else if uuid == CLOCK {
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_err(|_| ReqError::Failed)?
+                            .as_secs()
+                            .to_le_bytes()
+                            .to_vec()
                     } else {
                         panel.0.lock().unwrap().mailbox.result().to_vec()
                     };
@@ -212,6 +220,39 @@ pub async fn start(keys: &Path) -> Result<Radio, Box<dyn Error>> {
         ..Default::default()
     };
     let key = keys.join("signing-pin-public.key");
+    let mut clock = read_characteristic(CLOCK, panel.clone(), adapter.clone(), key.clone());
+    let clock_panel = panel.clone();
+    let clock_adapter = adapter.clone();
+    clock.write = Some(CharacteristicWrite {
+        write: true,
+        secure_write: true,
+        encrypt_authenticated_write: true,
+        method: CharacteristicWriteMethod::Fun(Box::new(move |bytes, req| {
+            let (panel, adapter) = (clock_panel.clone(), clock_adapter.clone());
+            Box::pin(async move {
+                check_peer(&panel, &adapter, req.device_address).await?;
+                if req.offset != 0 || req.prepare_authorize {
+                    return Err(ReqError::InvalidOffset);
+                }
+                let unix =
+                    u64::from_le_bytes(bytes.try_into().map_err(|_| ReqError::InvalidValueLength)?);
+                // Dates supported by this appliance: 2024 through 2099.
+                if !(1_704_067_200..4_102_444_800).contains(&unix) {
+                    return Err(ReqError::NotPermitted);
+                }
+                let mut state = panel.0.lock().unwrap();
+                if state.event.is_some() || state.mailbox.result().first() == Some(&1) {
+                    return Err(ReqError::InProgress);
+                }
+                state.event = Some(Event::Clock {
+                    unix,
+                    received: Instant::now(),
+                });
+                Ok(())
+            })
+        })),
+        ..Default::default()
+    });
     let service = adapter
         .serve_gatt_application(Application {
             services: vec![Service {
@@ -220,6 +261,7 @@ pub async fn start(keys: &Path) -> Result<Radio, Box<dyn Error>> {
                 characteristics: vec![
                     read_characteristic(KEY, panel.clone(), adapter.clone(), key.clone()),
                     write,
+                    clock,
                     read_characteristic(RESULT, panel.clone(), adapter.clone(), key),
                 ],
                 ..Default::default()

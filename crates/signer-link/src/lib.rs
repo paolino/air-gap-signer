@@ -6,6 +6,7 @@ pub const SERVICE: Uuid = Uuid::from_u128(0x8d36c836_c015_4da1_8d7a_253247100001
 pub const KEY: Uuid = Uuid::from_u128(0x8d36c836_c015_4da1_8d7a_253247100002);
 pub const REQUEST: Uuid = Uuid::from_u128(0x8d36c836_c015_4da1_8d7a_253247100003);
 pub const RESULT: Uuid = Uuid::from_u128(0x8d36c836_c015_4da1_8d7a_253247100004);
+pub const CLOCK: Uuid = Uuid::from_u128(0x8d36c836_c015_4da1_8d7a_253247100005);
 const MAX_PAYLOAD: usize = 1024;
 const MAX_PLAN: usize = 4096;
 const LIMIT: usize = 2 + MAX_PAYLOAD + MAX_PLAN;
@@ -82,7 +83,7 @@ impl Mailbox {
                 if id(&data) != tag || decode(&data).is_none() {
                     return Err("invalid request");
                 }
-                if self.result.get(1..17) != Some(&tag) {
+                if self.result.get(1..17) != Some(&tag) || self.result.first() == Some(&4) {
                     self.result = [&[1][..], &tag].concat();
                     return Ok(Some(data));
                 }
@@ -130,6 +131,22 @@ mod tests {
             assert!(m.write(p).unwrap().is_none());
         }
         assert_eq!(&m.result()[17..], &[42; 64]);
+    }
+    #[test]
+    fn an_explicit_resend_retries_a_failed_review_but_preserves_a_decline() {
+        let data = encode(&[1], &[2]).unwrap();
+        let mut mailbox = Mailbox::default();
+        let send = |mailbox: &mut Mailbox| {
+            frames(&data)
+                .iter()
+                .find_map(|frame| mailbox.write(frame).unwrap())
+        };
+        assert_eq!(send(&mut mailbox), Some(data.clone()));
+        mailbox.finish(id(&data), Err(()));
+        assert_eq!(send(&mut mailbox), Some(data.clone()));
+        mailbox.finish(id(&data), Ok(None));
+        assert_eq!(send(&mut mailbox), None);
+        assert_eq!(mailbox.result()[0], 2);
     }
     #[test]
     fn tampered_commit_never_reaches_panel() {

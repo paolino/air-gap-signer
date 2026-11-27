@@ -5,7 +5,7 @@ use btleplug::{
 };
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use signer_link::{KEY, REQUEST, RESULT, SERVICE};
+use signer_link::{CLOCK, KEY, REQUEST, RESULT, SERVICE};
 #[cfg(target_os = "linux")]
 use std::io;
 use std::{
@@ -19,7 +19,10 @@ use tokio::time::{sleep, timeout, Instant};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[derive(Parser)]
-#[command(about = "Pair with the panel and request a verified preprod payment witness")]
+#[command(
+    version,
+    about = "Pair with the panel and request a verified preprod payment witness"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -28,7 +31,25 @@ struct Cli {
 enum Command {
     /// Confirm the matching Bluetooth code on the laptop and panel.
     Pair,
-    /// Review a preprod self-payment on the paired panel.
+    /// Advance an offline panel's clock after confirmation on its display.
+    SyncClock,
+    /// Send an unsigned preprod self-payment to the panel for review.
+    Send {
+        #[arg(long)]
+        tx_body: PathBuf,
+        #[arg(long)]
+        plan: Option<PathBuf>,
+    },
+    /// Collect the signed transaction for a previously sent request.
+    Retrieve {
+        #[arg(long)]
+        tx_body: PathBuf,
+        #[arg(long)]
+        plan: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Send a preprod self-payment and collect its verified witness in one command.
     Sign {
         #[arg(long)]
         tx_body: PathBuf,
@@ -239,21 +260,86 @@ async fn public_key(device: &Peripheral) -> Result<[u8; 32]> {
         .map_err(|_| "invalid payment key".into())
 }
 
-async fn sign(peer: &Peer, body: &Path, plan: Option<PathBuf>, out: &Path) -> Result<()> {
-    if out.try_exists()? {
-        return Err("output already exists".into());
+enum Transfer<'a> {
+    Send,
+    Retrieve(&'a Path),
+    Sign(&'a Path),
+}
+
+async fn enrolled_connection(peer: &Peer) -> Result<Peripheral> {
+    let device = connect(Connection::Sign(&peer.device)).await?;
+    if public_key(&device).await? != peer.key {
+        return Err("paired payment key has changed".into());
+    }
+    Ok(device)
+}
+
+fn unix_now() -> Result<u64> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs())
+}
+
+async fn sync_clock(peer: &Peer) -> Result<()> {
+    let device = enrolled_connection(peer).await?;
+    let clock = characteristic(&device, CLOCK)
+        .map_err(|_| "this panel image does not support clock synchronization")?;
+    let read = || async {
+        Ok::<u64, Box<dyn Error>>(u64::from_le_bytes(
+            device
+                .read(&clock)
+                .await?
+                .try_into()
+                .map_err(|_| "invalid panel clock")?,
+        ))
+    };
+    let current = read().await?;
+    let proposal = unix_now()?;
+    if current.abs_diff(proposal) <= 3 {
+        println!("Panel clock is in sync.");
+        return Ok(());
+    }
+    if current > proposal {
+        return Err("panel clock is ahead of the laptop; check both clocks".into());
+    }
+    device
+        .write(&clock, &proposal.to_le_bytes(), WriteType::WithResponse)
+        .await?;
+    eprintln!("Check the UTC date and time on the panel. Press #5 if correct or #6 to cancel.");
+    let deadline = Instant::now() + Duration::from_secs(65);
+    while Instant::now() < deadline {
+        if read().await?.abs_diff(unix_now()?) <= 3 {
+            println!("Panel clock synchronized.");
+            return Ok(());
+        }
+        sleep(Duration::from_secs(1)).await;
+    }
+    Err("clock change was not confirmed".into())
+}
+
+async fn transfer(
+    peer: &Peer,
+    body: &Path,
+    plan: Option<PathBuf>,
+    mode: Transfer<'_>,
+) -> Result<()> {
+    if let Transfer::Sign(out) | Transfer::Retrieve(out) = mode {
+        if out.try_exists()? {
+            return Err("output already exists".into());
+        }
     }
     let (payload, _) = usb_pack::cardano::prepare(fs::read(body)?)?;
     let plan = fs::read(plan.unwrap_or_else(|| body.with_file_name("plan.json")))?;
     let request = signer_link::encode(&payload, &plan)?;
     let tag = signer_link::id(&request);
-    let device = connect(Connection::Sign(&peer.device)).await?;
-    if public_key(&device).await? != peer.key {
-        return Err("paired payment key has changed".into());
-    }
+    let device = enrolled_connection(peer).await?;
     let result = characteristic(&device, RESULT)?;
     let first = device.read(&result).await?;
-    if first.get(1..17) != Some(&tag) {
+    let retry_failure = matches!(mode, Transfer::Send) && first.first() == Some(&4);
+    if first.get(1..17) != Some(&tag) || retry_failure {
+        if matches!(mode, Transfer::Retrieve(_)) {
+            return Err("no result for this transaction and plan on the panel".into());
+        }
         if first.first() == Some(&1) {
             return Err("panel is reviewing another request".into());
         }
@@ -263,6 +349,13 @@ async fn sign(peer: &Peer, body: &Path, plan: Option<PathBuf>, out: &Path) -> Re
                 .write(&write, &frame, WriteType::WithResponse)
                 .await?;
         }
+    }
+    if matches!(mode, Transfer::Send) {
+        println!(
+            "Request {} is on the panel. Use retrieve with the same transaction and plan.",
+            hex::encode(tag)
+        );
+        return Ok(());
     }
     eprintln!("Review the payment on the panel. If disconnected, repeat the same command to collect the result.");
     let deadline = Instant::now() + Duration::from_secs(300);
@@ -275,7 +368,20 @@ async fn sign(peer: &Peer, body: &Path, plan: Option<PathBuf>, out: &Path) -> Re
             1 if Instant::now() < deadline => sleep(Duration::from_millis(500)).await,
             1 => return Err("panel review is still pending".into()),
             2 => return Err("payment declined".into()),
-            3 => return usb_pack::witness::write_verified(payload, peer.key, &reply[17..], out),
+            3 => {
+                return match mode {
+                    Transfer::Retrieve(out) => usb_pack::witness::write_signed_transaction(
+                        payload,
+                        peer.key,
+                        &reply[17..],
+                        out,
+                    ),
+                    Transfer::Sign(out) => {
+                        usb_pack::witness::write_verified(payload, peer.key, &reply[17..], out)
+                    }
+                    Transfer::Send => unreachable!(),
+                }
+            }
             _ => {
                 return Err(
                     "panel could not complete this review; check its screen and transaction expiry"
@@ -345,10 +451,35 @@ async fn main() -> Result<()> {
             )?;
             println!("Paired. Payment verification key {}", hex::encode(key));
         }
-        Command::Sign { tx_body, plan, out } => {
-            let peer: Peer =
-                serde_json::from_slice(&fs::read(path).map_err(|_| "run signer pair first")?)?;
-            timeout(Duration::from_secs(360), sign(&peer, &tx_body, plan, &out)).await??;
+        command => {
+            let peer = enrolled_peer(&path)?.ok_or("run signer pair first")?;
+            match command {
+                Command::SyncClock => {
+                    timeout(Duration::from_secs(160), sync_clock(&peer)).await??
+                }
+                Command::Send { tx_body, plan } => {
+                    timeout(
+                        Duration::from_secs(90),
+                        transfer(&peer, &tx_body, plan, Transfer::Send),
+                    )
+                    .await??
+                }
+                Command::Retrieve { tx_body, plan, out } => {
+                    timeout(
+                        Duration::from_secs(400),
+                        transfer(&peer, &tx_body, plan, Transfer::Retrieve(&out)),
+                    )
+                    .await??
+                }
+                Command::Sign { tx_body, plan, out } => {
+                    timeout(
+                        Duration::from_secs(400),
+                        transfer(&peer, &tx_body, plan, Transfer::Sign(&out)),
+                    )
+                    .await??
+                }
+                Command::Pair => unreachable!(),
+            }
         }
     }
     Ok(())

@@ -33,6 +33,46 @@ pub(super) fn run_bluetooth(
                         Err(e) => return Err(e.into()),
                     }
                 }
+                Event::Clock { unix, received } => {
+                    const EXPIRED: &str = "Clock request expired";
+                    let window = std::time::Duration::from_secs(60);
+                    if received.elapsed() >= window {
+                        continue;
+                    }
+                    let formatted = std::process::Command::new("date")
+                        .args(["-u", "-d", &format!("@{unix}"), "+%F %T UTC"])
+                        .output()?;
+                    if !formatted.status.success() {
+                        return Err("cannot display proposed time".into());
+                    }
+                    let utc = std::str::from_utf8(&formatted.stdout)?.trim();
+                    hal.buttons.set_abort(Some(Box::new(move || {
+                        (received.elapsed() >= window).then(|| HalError::Button(EXPIRED.into()))
+                    })));
+                    let accepted = signer_pi::key_trial::confirm(
+                        hal,
+                        &format!("Set panel clock?\n{utc}\nCheck date and time."),
+                    );
+                    hal.buttons.set_abort(None);
+                    match accepted {
+                        Ok(true) if received.elapsed() < window => {
+                            use rustix::time::{clock_gettime, clock_settime, ClockId, Timespec};
+                            let target = (unix + received.elapsed().as_secs()) as i64;
+                            if target > clock_gettime(ClockId::Realtime).tv_sec {
+                                clock_settime(
+                                    ClockId::Realtime,
+                                    Timespec {
+                                        tv_sec: target,
+                                        tv_nsec: 0,
+                                    },
+                                )?;
+                            }
+                        }
+                        Ok(_) => (),
+                        Err(HalError::Button(reason)) if reason == EXPIRED => (),
+                        Err(e) => return Err(e.into()),
+                    }
+                }
                 Event::Review(data) => {
                     let signed = review_wire(hal, keys, &data);
                     panel.finish(
