@@ -53,8 +53,9 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
         .next()
         .ok_or("Bluetooth adapter unavailable")?;
     #[cfg(target_os = "linux")]
+    let session = bluer::Session::new().await?;
+    #[cfg(target_os = "linux")]
     let _scan = {
-        let session = bluer::Session::new().await?;
         let address = adapter
             .adapter_address()
             .await?
@@ -108,7 +109,7 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
     // the same session that owns the comparison agent before opening GATT.
     #[cfg(target_os = "linux")]
     if known.is_none() {
-        pair_os(&device).await?;
+        pair_os(&session, &device).await?;
     }
     if !device.is_connected().await? {
         device.connect().await?;
@@ -122,8 +123,7 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
 }
 
 #[cfg(target_os = "linux")]
-async fn pair_os(device: &Peripheral) -> Result<()> {
-    let session = bluer::Session::new().await?;
+async fn pair_os(session: &bluer::Session, device: &Peripheral) -> Result<()> {
     let id = device.id().to_string();
     let (controller, _) = id.split_once('/').ok_or("unexpected BlueZ device path")?;
     let addr = device.address().to_string().parse()?;
