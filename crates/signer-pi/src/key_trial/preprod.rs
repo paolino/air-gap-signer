@@ -102,7 +102,7 @@ impl<H: Buttons + Display + recovery_pin::PinContacts> PanelSigner<'_, H> {
         )? {
             return Err("Cancelled".into());
         }
-        let pin = pin_enrollment::enter(self.hal, "Sign preprod payment. #6 cancel")?
+        let pin = pin_enrollment::enter(self.hal, "Sign preprod payment.\n#6 cancel")?
             .ok_or("Cancelled")?;
         self.plan.check_time(now()?)?;
         Ok(pin_enrollment::sign_verified(&mut self.se, &pin, &self.public, &self.digest)?.to_vec())

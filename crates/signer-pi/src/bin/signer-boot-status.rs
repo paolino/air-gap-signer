@@ -16,7 +16,9 @@ fn main() {
     let mut previous = String::new();
     let mut next = Instant::now();
     loop {
-        let mut phase = fs::read_to_string(boot::PHASE).unwrap_or_else(|_| "devices".into());
+        let mut phase = fs::read_to_string(boot::PHASE)
+            .map(|s| s.trim().to_owned())
+            .unwrap_or_else(|_| "devices".into());
         if phase == "ready" {
             return;
         }

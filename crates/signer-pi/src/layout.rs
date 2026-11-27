@@ -30,24 +30,24 @@ pub fn wrap_lines(lines: &[DisplayLine], cols: usize) -> Vec<String> {
 }
 
 /// Wrap a message into rows of at most `cols` characters, breaking at
-/// spaces where possible.
+/// spaces where possible and preserving explicit screen rows.
 pub fn wrap_message(text: &str, cols: usize) -> Vec<String> {
-    let mut rows: Vec<String> = Vec::new();
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        for piece in chunks(word, cols) {
-            let needed = current.chars().count() + piece.chars().count() + 1;
-            if current.is_empty() {
-                current = piece;
-            } else if needed <= cols {
-                current.push(' ');
-                current.push_str(&piece);
-            } else {
-                rows.push(std::mem::replace(&mut current, piece));
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let mut current = String::new();
+        for word in line.split_whitespace() {
+            for piece in chunks(word, cols) {
+                let needed = current.chars().count() + 1 + piece.chars().count();
+                if current.is_empty() {
+                    current = piece;
+                } else if needed <= cols {
+                    current.push(' ');
+                    current.push_str(&piece);
+                } else {
+                    rows.push(std::mem::replace(&mut current, piece));
+                }
             }
         }
-    }
-    if !current.is_empty() {
         rows.push(current);
     }
     rows
@@ -120,6 +120,14 @@ mod tests {
         assert_eq!(
             wrap_message("Insert USB stick", 10),
             vec!["Insert USB", "stick"]
+        );
+    }
+
+    #[test]
+    fn bluetooth_actions_keep_their_own_rows() {
+        assert_eq!(
+            wrap_message("Bluetooth ready\n\n#5 Pair laptop\n#6 Keys", 22),
+            ["Bluetooth ready", "", "#5 Pair laptop", "#6 Keys"]
         );
     }
 

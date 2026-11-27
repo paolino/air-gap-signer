@@ -14,7 +14,9 @@ pub fn phase(value: &str) {
 }
 pub fn ready() {
     phase("ready");
-    if !Path::new("/run/signer-first-boot").exists() {
+    if !Path::new("/run/signer-first-boot").exists()
+        && fs::File::create_new("/run/signer-boot-finished").is_ok()
+    {
         let _ = fs::write(LAST, uptime().to_string());
     }
 }

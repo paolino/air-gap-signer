@@ -15,7 +15,7 @@ pub(super) fn run_bluetooth(
                     if !reply.is_closed() {
                         let accepted = signer_pi::key_trial::confirm(
                             hal,
-                            &format!("Pair laptop? Compare this code on both screens: {code:06}"),
+                            &format!("Pair laptop?\nCompare both screens\n{code:06}"),
                         )?;
                         let _ = reply.send(accepted);
                     }
@@ -40,9 +40,9 @@ pub(super) fn run_bluetooth(
         }
         let pairing = panel.pairing();
         let text = if pairing {
-            "Pairing open (60s). Run signer pair.\n#6 Cancel"
+            "Pairing open (60s)\nRun signer pair.\n\n#6 Cancel"
         } else {
-            "Bluetooth ready\n#5 Pair laptop\n#6 Keys"
+            "Bluetooth ready\n\n#5 Pair laptop\n#6 Keys"
         };
         hal.show_message(text)?;
         let wake = panel.clone();

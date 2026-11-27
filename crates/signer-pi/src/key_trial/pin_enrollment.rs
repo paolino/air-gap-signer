@@ -194,9 +194,9 @@ pub(super) fn run(
     }
     verify_export(dir, &expected)?;
     if phase == Phase::Protected {
-        if let Some(pin) = enter(hal, "Check signing PIN. #6 cancel")? {
+        if let Some(pin) = enter(hal, "Check signing PIN.\n#6 cancel")? {
             prove(&mut se, &pin, &expected)?;
-            hal.show_message("Signing PIN verified. #5 OK")?;
+            hal.show_message("Signing PIN verified.\n#5 OK")?;
             hal.wait_event()?;
         }
         return Ok(());
@@ -231,15 +231,15 @@ pub(super) fn run(
     }
     let auth = exists(&mut se, AUTH)?;
     let prompt = if auth {
-        "Enter signing PIN. #6 cancel"
+        "Enter signing PIN.\n#6 cancel"
     } else {
-        "Choose signing PIN. Release each move. #6 cancel"
+        "Choose signing PIN. Release each move.\n#6 cancel"
     };
     let Some(pin) = enter(hal, prompt)? else {
         return Ok(());
     };
     if !auth {
-        let Some(repeat) = enter(hal, "Repeat signing PIN. #6 cancel")? else {
+        let Some(repeat) = enter(hal, "Repeat signing PIN.\n#6 cancel")? else {
             return Ok(());
         };
         if *pin != *repeat {
@@ -292,7 +292,7 @@ pub(super) fn run(
         return Err("key or backup changed; keeping old copy".into());
     }
     erase_owned(&mut se, &expected)?;
-    hal.show_message("Old copy removed. Signing PIN active. #5 OK")?;
+    hal.show_message("Old copy removed. Signing PIN active.\n#5 OK")?;
     hal.wait_event()?;
     Ok(())
 }

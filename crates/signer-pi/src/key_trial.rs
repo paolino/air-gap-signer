@@ -78,11 +78,11 @@ pub fn confirm(hal: &mut (impl Buttons + Display), message: &str) -> Result<bool
         .lines()
         .flat_map(|line| crate::layout::wrap_message(line, cols))
         .collect();
-    // Reserve the heading, a blank separator and the bottom row of actions.
+    // Reserve the heading and one row per button.
     let mut pages = lines.chunks(height - 3).peekable();
     while let Some(page) = pages.next() {
         let last = pages.peek().is_none();
-        hal.show_review(&confirmation_page(page, cols, height, last))?;
+        hal.show_review(&confirmation_page(page, height, last))?;
         loop {
             match hal.wait_event()? {
                 ButtonEvent::Confirm if last => return Ok(true),
@@ -95,14 +95,12 @@ pub fn confirm(hal: &mut (impl Buttons + Display), message: &str) -> Result<bool
     Ok(false)
 }
 
-fn confirmation_page(page: &[String], cols: usize, height: usize, last: bool) -> View {
+fn confirmation_page(page: &[String], height: usize, last: bool) -> View {
     let mut rows = page.to_vec();
-    rows.resize(height - 2, String::new());
+    rows.resize(height - 3, String::new());
     let action = if last { "#5 Yes" } else { "#5 Next" };
-    rows.push(format!(
-        "{action:<width$}#6 Exit",
-        width = cols - "#6 Exit".len()
-    ));
+    rows.push(action.into());
+    rows.push("#6 Exit".into());
     View::Detail {
         header: "Confirm".into(),
         rows,
@@ -396,7 +394,7 @@ fn lifecycle(
                 Action::Create => "Backed up",
                 _ => "Verified",
             };
-            hal.show_message(&format!("{verb} {label}. #5 OK"))?;
+            hal.show_message(&format!("{verb} {label}.\n#5 OK"))?;
             hal.wait_event()?;
             return Ok(());
         }
@@ -417,7 +415,7 @@ fn lifecycle(
     }
     erase_owned(&mut se, &expected)?;
     let message = if action == Some(Action::Erase) {
-        "Practice key erased. Backup kept. #5 OK"
+        "Practice key erased. Backup kept.\n#5 OK"
     } else if restoring {
         "Trial complete. Restored key matched. Test slot empty."
     } else {
@@ -436,17 +434,15 @@ mod tests {
     use super::*;
     #[test]
     fn confirmation_actions_have_a_separate_bottom_row_at_each_grid_size() {
-        for (cols, height) in [(16, 4), (21, 11)] {
+        for height in [4, 11] {
             let body = vec!["Erase key?".to_string(); height - 3];
             for (last, action) in [(false, "#5 Next"), (true, "#5 Yes")] {
-                let View::Detail { rows, .. } = confirmation_page(&body, cols, height, last) else {
+                let View::Detail { rows, .. } = confirmation_page(&body, height, last) else {
                     panic!("expected a question with a footer");
                 };
                 assert_eq!(&rows[..body.len()], &body);
-                assert_eq!(rows[height - 3], "");
-                let footer = &rows[height - 2];
-                assert_eq!(footer.len(), cols);
-                assert!(footer.starts_with(action) && footer.ends_with("#6 Exit"));
+                assert_eq!(rows[height - 3], action);
+                assert_eq!(rows[height - 2], "#6 Exit");
             }
         }
     }

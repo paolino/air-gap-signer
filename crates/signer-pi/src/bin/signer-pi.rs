@@ -220,7 +220,7 @@ mod linux {
             if usb.poll_insert() {
                 return Ok(());
             }
-            hal.show_message("Insert USB stick. #6 Keys")?;
+            hal.show_message("Insert USB stick.\n#6 Keys")?;
             hal.buttons.set_abort(Some(Box::new(|| {
                 find_stick(Path::new(SYSFS_BLOCK))
                     .is_some()

@@ -98,7 +98,7 @@ pub(super) fn run(
             .mode(0o700)
             .create(dir)?;
         save_new(&dir.join(ARCHIVE), &backup.to_cbor())?;
-        hal.show_message("File recovered. Choose Restore backup with this FIDO. #5 OK")?;
+        hal.show_message("File recovered. Choose Restore backup with this FIDO.\n#5 OK")?;
         hal.wait_event()?;
         return Ok(());
     }

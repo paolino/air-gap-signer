@@ -51,6 +51,7 @@ in
     radios.wlan0 = {
       band = "2g"; channel = 6; countryCode = "PT";
       wifi4.enable = false;
+      wifi5.enable = false;
       networks.wlan0 = {
         ssid = "Signer-Pi";
         authentication = { mode = "wpa2-sha1"; wpaPasswordFile = "/var/lib/signer-appliance/wifi-passphrase"; };
