@@ -1,6 +1,7 @@
 /target
 /result
 /site
+/lean/.lake
 *.swp
 *.swo
 .llm/

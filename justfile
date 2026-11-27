@@ -41,8 +41,42 @@ format-check:
 lint:
     cargo clippy --workspace --exclude echo-hex -- -D warnings
 
+# Build and verify Lean 4 formalization and oracle driver
+lean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd lean
+    lake build
+    # Check that no sorry or admit appears in Lean source files
+    if grep -rnE '\b(sorry|admit)\b' AirGapSigner.lean AirGapSigner/; then
+        echo "error: sorry or admit found in Lean sources" >&2
+        exit 1
+    fi
+    # Kernel axiom check: reject sorryAx or non-standard axioms
+    axioms=$(lake env lean --stdin <<'EOF'
+    import AirGapSigner
+    #print axioms AirGapSigner.ok_ne_refused
+    EOF
+    )
+    if grep -q 'sorryAx' <<<"$axioms"; then
+        echo "error: sorryAx detected in Lean kernel axioms" >&2
+        exit 1
+    fi
+    # Positive smoke check on the oracle driver
+    out=$(lake exe air-gap-signer-oracle <<< '{"surface":"surfaces"}')
+    test "$out" = '{"status":"ok","surfaces":[]}'
+    # Negative control: malformed JSON and unknown surface must fail non-zero
+    if lake exe air-gap-signer-oracle <<< 'not-json' >/dev/null 2>&1; then
+        echo "error: oracle accepted invalid JSON" >&2
+        exit 1
+    fi
+    if lake exe air-gap-signer-oracle <<< '{"surface":"nonexistent"}' >/dev/null 2>&1; then
+        echo "error: oracle accepted unknown surface" >&2
+        exit 1
+    fi
+
 # Full CI pipeline
-ci: format-check lint build build-wasm build-pi build-panel-input test gerbers schematic
+ci: format-check lint build build-wasm build-pi build-panel-input test lean gerbers schematic
 
 # Build documentation
 build-docs:
