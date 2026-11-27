@@ -45,6 +45,18 @@ struct Peer {
     key: [u8; 32],
 }
 
+// BlueZ prefixes a remote device address with the local controller index.
+// That index can change when Linux reinitializes the adapter.
+fn panel_id(id: &str) -> &str {
+    #[cfg(target_os = "linux")]
+    if let Some((index, address)) = id.strip_prefix("hci").and_then(|s| s.split_once('/')) {
+        if index.parse::<u32>().is_ok() && address.starts_with("dev_") {
+            return address;
+        }
+    }
+    id
+}
+
 enum Connection<'a> {
     Pair(Option<&'a str>),
     Sign(&'a str),
@@ -96,7 +108,7 @@ async fn connect(request: Connection<'_>) -> Result<Peripheral> {
     sleep(Duration::from_secs(8)).await;
     let mut matches = Vec::new();
     for device in adapter.peripherals().await? {
-        if known.is_none_or(|id| id == device.id().to_string())
+        if known.is_none_or(|id| panel_id(id) == panel_id(&device.id().to_string()))
             && device
                 .properties()
                 .await?
@@ -269,7 +281,7 @@ fn enrolled_peer(path: &Path) -> Result<Option<Peer>> {
 
 fn remember_peer(path: &Path, peer: &Peer) -> Result<()> {
     let check = |saved: Peer| -> Result<()> {
-        if saved == *peer {
+        if panel_id(&saved.device) == panel_id(&peer.device) && saved.key == peer.key {
             Ok(())
         } else {
             Err("panel identity or payment verification key differs from your enrollment".into())
@@ -312,7 +324,7 @@ async fn main() -> Result<()> {
             remember_peer(
                 &path,
                 &Peer {
-                    device: device.id().to_string(),
+                    device: panel_id(&device.id().to_string()).into(),
                     key,
                 },
             )?;
@@ -330,6 +342,27 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn controller_renumbering_recognizes_an_existing_enrollment() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("panel.json");
+        let mut peer = Peer {
+            device: "hci0/dev_B8_27_EB_19_1C_0A".into(),
+            key: [1; 32],
+        };
+        remember_peer(&path, &peer).unwrap();
+        let before = fs::read(&path).unwrap();
+        peer.device = panel_id("hci1/dev_B8_27_EB_19_1C_0A").into();
+        remember_peer(&path, &peer).unwrap();
+        peer.key = [9; 32];
+        assert!(remember_peer(&path, &peer).is_err());
+        peer.key = [1; 32];
+        peer.device = "hci1/dev_B8_27_EB_19_1C_FF".into();
+        assert!(remember_peer(&path, &peer).is_err());
+        assert_eq!(before, fs::read(path).unwrap());
+    }
+
     #[test]
     fn repairing_preserves_the_original_device_and_key() {
         let dir = tempfile::tempdir().unwrap();
