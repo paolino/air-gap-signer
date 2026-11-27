@@ -1,6 +1,6 @@
 //! Native Bluetooth client for the preprod panel.
 use btleplug::{
-    api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType},
+    api::{Central, Manager as _, Peripheral as _, WriteType},
     platform::{Manager, Peripheral},
 };
 use clap::{Parser, Subcommand};
@@ -52,12 +52,38 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
         .into_iter()
         .next()
         .ok_or("Bluetooth adapter unavailable")?;
+    #[cfg(target_os = "linux")]
+    let _scan = {
+        let session = bluer::Session::new().await?;
+        let address = adapter
+            .adapter_address()
+            .await?
+            .ok_or("missing controller address")?;
+        let mut radio = None;
+        for name in session.adapter_names().await? {
+            let candidate = session.adapter(&name)?;
+            if candidate.address().await?.0 == *address.as_ref() {
+                radio = Some(candidate);
+                break;
+            }
+        }
+        let radio = radio.ok_or("cannot locate the Bluetooth controller")?;
+        radio.set_powered(true).await?;
+        radio
+            .set_discovery_filter(bluer::DiscoveryFilter {
+                transport: bluer::DiscoveryTransport::Le,
+                ..Default::default()
+            })
+            .await?;
+        radio.discover_devices().await?
+    };
+    #[cfg(not(target_os = "linux"))]
     adapter
-        .start_scan(ScanFilter {
+        .start_scan(btleplug::api::ScanFilter {
             services: vec![SERVICE],
         })
         .await?;
-    sleep(Duration::from_secs(4)).await;
+    sleep(Duration::from_secs(8)).await;
     let mut matches = Vec::new();
     for device in adapter.peripherals().await? {
         if known.is_none_or(|id| id == device.id().to_string())
@@ -69,17 +95,28 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
             matches.push(device);
         }
     }
-    adapter.stop_scan().await?;
     if matches.len() != 1 {
+        #[cfg(not(target_os = "linux"))]
+        let _ = adapter.stop_scan().await;
         return Err(
             "expected one matching signer; check power, Bluetooth permission and nearby panels"
                 .into(),
         );
     }
     let device = matches.pop().unwrap();
+    // BlueZ may request authentication while opening the link. Pair through
+    // the same session that owns the comparison agent before opening GATT.
+    #[cfg(target_os = "linux")]
+    if known.is_none() {
+        pair_os(&device).await?;
+    }
     if !device.is_connected().await? {
         device.connect().await?;
     }
+    // Some BlueZ controllers end discovery when the link comes up.
+    // Keep the advertisement available until connect and release our scan.
+    #[cfg(not(target_os = "linux"))]
+    let _ = adapter.stop_scan().await;
     device.discover_services().await?;
     Ok(device)
 }
@@ -87,44 +124,44 @@ async fn connect(known: Option<&str>) -> Result<Peripheral> {
 #[cfg(target_os = "linux")]
 async fn pair_os(device: &Peripheral) -> Result<()> {
     let session = bluer::Session::new().await?;
-    // Match the adapter used by btleplug even on a multi-radio host.
+    let id = device.id().to_string();
+    let (controller, _) = id.split_once('/').ok_or("unexpected BlueZ device path")?;
     let addr = device.address().to_string().parse()?;
-    for name in session.adapter_names().await? {
-        let adapter = session.adapter(&name)?;
-        if !adapter.device_addresses().await?.contains(&addr) {
-            continue;
-        }
-        let peer = adapter.device(addr)?;
-        if !peer.is_connected().await? {
-            continue;
-        }
-        if !peer.is_paired().await? {
-            let _agent = session
-                .register_agent(bluer::agent::Agent {
-                    request_confirmation: Some(Box::new(|req| {
-                        Box::pin(async move {
-                            eprintln!("Is {:06} on the panel? Type yes to pair.", req.passkey);
-                            let yes = tokio::task::spawn_blocking(|| {
-                                let mut s = String::new();
-                                io::stdin().read_line(&mut s).is_ok() && s.trim() == "yes"
-                            })
-                            .await
-                            .unwrap_or(false);
-                            if yes {
-                                Ok(())
-                            } else {
-                                Err(bluer::agent::ReqError::Rejected)
-                            }
-                        })
-                    })),
-                    ..Default::default()
-                })
-                .await?;
-            peer.pair().await?;
-        }
+    let peer = session.adapter(controller)?.device(addr)?;
+    if peer.is_paired().await? {
         return Ok(());
     }
-    Err("cannot locate connected panel on a Linux adapter".into())
+    let _agent = session
+        .register_agent(bluer::agent::Agent {
+            request_confirmation: Some(Box::new(move |req| {
+                Box::pin(async move {
+                    use bluer::agent::ReqError;
+                    if req.device != addr {
+                        return Err(ReqError::Rejected);
+                    }
+                    eprintln!("Is {:06} on the panel? Type yes to pair.", req.passkey);
+                    use std::os::fd::AsFd;
+                    let fd = io::stdin()
+                        .as_fd()
+                        .try_clone_to_owned()
+                        .map_err(|_| ReqError::Rejected)?;
+                    // SAFETY: AsyncFd owns this duplicate until deregistration.
+                    let input = unsafe { tokio::io::unix::AsyncFd::register(fd) }
+                        .map_err(|_| ReqError::Rejected)?;
+                    let _ready = input.readable().await.map_err(|_| ReqError::Rejected)?;
+                    let mut line = String::new();
+                    if io::stdin().read_line(&mut line).is_ok() && line.trim() == "yes" {
+                        Ok(())
+                    } else {
+                        Err(ReqError::Rejected)
+                    }
+                })
+            })),
+            ..Default::default()
+        })
+        .await?;
+    peer.pair().await?;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -227,8 +264,8 @@ async fn main() -> Result<()> {
                 );
             }
             eprintln!("On the idle panel press #5 to open pairing. Confirm the same code on both devices.");
-            let device = timeout(Duration::from_secs(25), connect(None)).await??;
-            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            let device = timeout(Duration::from_secs(90), connect(None)).await??;
+            #[cfg(target_os = "windows")]
             timeout(Duration::from_secs(75), pair_os(&device)).await??;
             let key=timeout(Duration::from_secs(75),public_key(&device)).await?
                 .map_err(|e|format!("authenticated read failed ({e}); complete pairing in system Bluetooth settings and retry"))?;
