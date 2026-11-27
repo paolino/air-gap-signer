@@ -450,9 +450,14 @@ mod tests {
         };
         use ButtonEvent::{Back, Confirm, Down, Mode, Open};
         let signed = vec![(0, SIG.to_vec())];
-        // Signing is refused while it is left.
-        let (decision, _) = headers(&[Mode, Confirm, Down, Confirm]);
+        // Opening an unread field from Sign, then leaving it, cannot sign.
+        let (decision, h) = headers(&[Mode, Confirm, Back, Down, Confirm]);
+        assert!(h[2].contains("#5 next"));
         assert_eq!(decision, vec![]);
+        // Reading the final page returns to Sign ready without signing.
+        let (decision, h) = headers(&[Mode, Confirm, Confirm, Down, Confirm]);
+        assert_eq!(decision, vec![]);
+        assert!(h[3].contains("ready"));
         // Read it in full, then sign.
         let (decision, h) = headers(&[Open, Back, Mode, Confirm, Down, Confirm]);
         assert_eq!(decision, signed);
