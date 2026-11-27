@@ -1,5 +1,6 @@
 //! Migrate the practice object without spending or exporting a payment signature.
 use super::*;
+use crate::display::show_pin_count;
 use panel_input::{EntryEvent, PinEntry, Sequence};
 use se05x::se05x::commands::{
     CheckObjectExists, CloseSession, CreateSession, EddsaSign, VerifySessionUserId, WriteEcKey,
@@ -137,7 +138,7 @@ fn enter(
     hal: &mut (impl Display + recovery_pin::PinContacts),
     prompt: &str,
 ) -> Result<Option<Sequence>, Error> {
-    hal.show_message(prompt)?;
+    show_pin_count(hal, prompt, 0)?;
     let mut entry = PinEntry::default();
     let mut previous = None;
     let mut since = std::time::Instant::now();
@@ -155,8 +156,12 @@ fn enter(
         }
         match entry.sample(contacts) {
             EntryEvent::Pending => std::thread::sleep(crate::buttons::POLL),
+            EntryEvent::Progress(count) => show_pin_count(hal, prompt, count)?,
             EntryEvent::Restart => return Ok(None), // Mode cancels this screen.
-            EntryEvent::Complete(pin) => return Ok(Some(pin)),
+            EntryEvent::Complete(pin) => {
+                show_pin_count(hal, prompt, panel_input::PIN_LENGTH)?;
+                return Ok(Some(pin));
+            }
         }
     }
 }
@@ -175,7 +180,7 @@ pub(super) fn run(
     }
     verify_export(dir, &expected)?;
     if phase == Phase::Protected {
-        if let Some(pin) = enter(hal, "Check signing PIN. 9 moves. #6 cancel")? {
+        if let Some(pin) = enter(hal, "Check signing PIN. #6 cancel")? {
             prove(&mut se, &pin, &expected)?;
             hal.show_message("Signing PIN verified. #5 OK")?;
             hal.wait_event()?;
@@ -212,15 +217,15 @@ pub(super) fn run(
     }
     let auth = exists(&mut se, AUTH)?;
     let prompt = if auth {
-        "Enter enrolled 9 moves. #6 cancel"
+        "Enter signing PIN. #6 cancel"
     } else {
-        "Choose 9 joystick moves. Release each. #6 cancel"
+        "Choose signing PIN. Release each move. #6 cancel"
     };
     let Some(pin) = enter(hal, prompt)? else {
         return Ok(());
     };
     if !auth {
-        let Some(repeat) = enter(hal, "Repeat the 9 moves. #6 cancel")? else {
+        let Some(repeat) = enter(hal, "Repeat signing PIN. #6 cancel")? else {
             return Ok(());
         };
         if *pin != *repeat {

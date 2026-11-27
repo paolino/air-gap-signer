@@ -297,7 +297,8 @@ one wrong entry. It does not exercise lockout.
 With the external camera off and the original recovery token inserted, open
 **Keys → Practice key → Enroll signing PIN**. Enter the token PIN using the
 keyboard, then touch the token to unlock the existing backup. Choose nine
-joystick moves and repeat them. Release between moves. The center is unused
+joystick moves and repeat them. Each entry starts at 0/9. Releasing a single
+direction advances the count, and 9/9 appears briefly before the next screen. The center is unused
 and #6 cancels entry. The SE051 enrollment requests a five-attempt limit.
 
 The panel imports the same key into a separate PIN-protected chip object. It

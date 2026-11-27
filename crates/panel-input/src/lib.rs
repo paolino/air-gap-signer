@@ -11,6 +11,8 @@ pub type Sequence = Zeroizing<[u8; PIN_LENGTH]>;
 
 pub enum EntryEvent {
     Pending,
+    /// A direction was accepted on release. Carries only the total so far.
+    Progress(usize),
     Restart,
     Complete(Sequence),
 }
@@ -50,6 +52,7 @@ impl PinEntry {
                     *self = Self::default();
                     return EntryEvent::Complete(sequence);
                 }
+                return EntryEvent::Progress(self.used);
             }
             _ => {}
         }
@@ -69,8 +72,10 @@ mod tests {
 
     fn complete(entry: &mut PinEntry) {
         let expected = [8, 8, 1, 2, 4, 8, 1, 4, 2];
-        for &symbol in &expected[..PIN_LENGTH - 1] {
-            pending(entry, &[symbol, symbol, 0, 0]);
+        for (i, &symbol) in expected[..PIN_LENGTH - 1].iter().enumerate() {
+            pending(entry, &[symbol, symbol]);
+            assert!(matches!(entry.sample(0), EntryEvent::Progress(n) if n == i + 1));
+            pending(entry, &[0, 0, 1, 3, 0, 64, 0]);
         }
         pending(entry, &[expected[PIN_LENGTH - 1]]);
         match entry.sample(0) {
@@ -89,7 +94,11 @@ mod tests {
     #[test]
     fn restart_and_completion_clear_the_previous_entry() {
         let mut entry = PinEntry::default();
-        pending(&mut entry, &[0, 4, 0, 4, 0, 32]);
+        pending(&mut entry, &[0, 4]);
+        assert!(matches!(entry.sample(0), EntryEvent::Progress(1)));
+        pending(&mut entry, &[4]);
+        assert!(matches!(entry.sample(0), EntryEvent::Progress(2)));
+        pending(&mut entry, &[32]);
         assert!(matches!(entry.sample(0), EntryEvent::Restart));
         pending(&mut entry, &[8, 0]);
         complete(&mut entry);
