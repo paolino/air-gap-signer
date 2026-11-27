@@ -115,14 +115,28 @@ fn prove(se: &mut Se051, pin: &Sequence, public: &[u8; 32]) -> Result<(), Error>
             if matches!(u16::from(sw), 0x6982 | 0x6985 | 0x6986) => {}
         _ => return Err("unverified chip session did not refuse signing".into()),
     }
+    sign_verified(se, pin, public, &challenge).map(|_| ())
+}
+
+pub(super) fn sign_verified(
+    se: &mut Se051,
+    pin: &Sequence,
+    public: &[u8; 32],
+    digest: &[u8; 32],
+) -> Result<[u8; 64], Error> {
     with_pin(se, pin, |se, id| {
         let mut buf = [0; 256];
+        let sign = EddsaSign {
+            key_id: PROTECTED,
+            data: digest,
+        };
         let reply = se
             .chip()
             .run_session_command(id, &sign, &mut buf)
             .map_err(chip_error)?;
         let sig = crate::se051::from_chip(reply.signature)?;
-        Ok(crate::se051::verify(public, &challenge, &sig)?)
+        crate::se051::verify(public, digest, &sig)?;
+        Ok(sig)
     })
 }
 
@@ -134,7 +148,7 @@ fn direction_mask(contacts: u8) -> u8 {
         .fold(0, |mask, (i, bit)| mask | (((contacts >> i) & 1) << bit))
 }
 
-fn enter(
+pub(super) fn enter(
     hal: &mut (impl Display + recovery_pin::PinContacts),
     prompt: &str,
 ) -> Result<Option<Sequence>, Error> {

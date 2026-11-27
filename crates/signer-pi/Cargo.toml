@@ -36,6 +36,9 @@ signer-core = { path = "../signer-core" }
 signer-hal = { path = "../signer-hal" }
 fontdue = "0.9"
 serde_json.workspace = true
+serde.workspace = true
+blake2.workspace = true
+pallas-codec = "1.4"
 hex.workspace = true
 ed25519-dalek.workspace = true
 thiserror.workspace = true

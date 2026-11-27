@@ -311,3 +311,22 @@ After removal, **Check signing PIN** repeats the challenge test with the
 enrolled sequence. The encrypted FIDO backup remains available for recovery.
 This operation does not sign a transaction. The Linux Pi is the bench controller
 and receives the sequence and decrypted backup in its own memory.
+
+### Preprod self-payment on the bench
+
+The bench host resolves a single ADA-only UTxO on preprod and uses
+`cardano-cli conway transaction build-raw` to return it to the same enterprise
+address after fees. It stages the raw transaction in `payment.cbor` and the
+independently calculated transaction ID and input details in `plan.json` in
+a trusted local directory. The plan fields are `input_tx`, `input_index`,
+`input_lovelace`, `fee`, `expires_slot`, `tip_slot`, `tip_unix` (seconds)
+and `tx_id`. The host supplies the preprod chain context. The Pi reconstructs
+the permitted transaction using the enrolled practice public key, checks all
+bytes and the ID, and estimates expiry from the staged tip and its clock.
+
+Run `signer-pi --preprod-payment DIRECTORY` with the panel available. Review
+the transaction, press #6 for Sign and #5 on Practice key, confirm the fee
+and enter the nine-move PIN. Select Done to write `payment.signature`.
+The host verifies the signature with `cardano-witness`, assembles the
+transaction and submits it separately. The ordinary USB preview and its
+untrusted interpreter cannot reach this bench signing path.

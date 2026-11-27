@@ -13,6 +13,7 @@ use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 
 mod pin_enrollment;
+pub mod preprod;
 mod token_copy;
 
 const TRIAL_KEY: ObjectId = ObjectId([0x7D, 0xA0, 0x32, 0x01]);

@@ -50,6 +50,10 @@ mod linux {
         #[arg(long, value_name = "DIRECTORY")]
         practice_keys: Option<PathBuf>,
 
+        /// Bench review of one locally staged preprod self-payment.
+        #[arg(long, value_name = "DIRECTORY", conflicts_with = "practice_keys")]
+        preprod_payment: Option<PathBuf>,
+
         /// Where the stick is mounted while it is read
         #[arg(long, default_value = "/run/signer-usb")]
         mount_point: PathBuf,
@@ -125,6 +129,17 @@ mod linux {
         let display = FbDisplay::open(Path::new(SYSFS), &fb, cli.size).unwrap_or_else(|e| fail(e));
         let buttons = GpioButtons::open(&cli.chip).unwrap_or_else(|e| fail(e));
         let mut hal = Hal { display, buttons };
+        if let Some(dir) = cli.preprod_payment {
+            if let Err(e) = signer_pi::key_trial::preprod::run(
+                &mut hal,
+                Path::new("/var/lib/signer-pi/practice"),
+                &dir,
+            ) {
+                let _ = hal.show_message(&format!("Payment stopped. {e}"));
+                fail(e);
+            }
+            return;
+        }
         if let Some(dir) = cli.practice_keys {
             if let Err(error) = signer_pi::key_trial::run(&mut hal, &dir) {
                 let message = format!("Key trial stopped: {error}");
