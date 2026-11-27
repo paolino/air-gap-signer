@@ -1,0 +1,1181 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://paolino.github.io/air-gap-signer/architecture/review/">
+      
+      
+        <link rel="prev" href="../secure-element/">
+      
+      
+        <link rel="next" href="../../dev/getting-started/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+    
+    
+      
+        <title>Transaction Review - Air-Gapped Signer</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.618322db.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#transaction-review" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Air-Gapped Signer" class="md-header__button md-logo" aria-label="Air-Gapped Signer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Air-Gapped Signer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Transaction Review
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/paolino/air-gap-signer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Air-Gapped Signer" class="md-nav__button md-logo" aria-label="Air-Gapped Signer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Air-Gapped Signer
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/paolino/air-gap-signer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usb-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wasm-sandbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WASM Sandbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../signing-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Signing Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secure-element/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secure Element
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transaction Review
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transaction Review
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#who-this-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who this is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-user-sees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user sees
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#states-of-the-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        States of the review
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-counts-as-shown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What counts as shown
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accepting-without-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accepting without reading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#buttons-cannot-answer-a-screen-they-did-not-see" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buttons cannot answer a screen they did not see
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dev/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dev/phases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dev/prototype-rig/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prototype Rig
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../overview/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="transaction-review">Transaction Review</h1>
+<h2 id="who-this-is-for">Who this is for</h2>
+<p>The person holding the signer. A transaction has arrived on the USB
+stick and the interpreter has turned it into fields; before anything is
+signed, they read every field on a 240×240 screen, then switch to the
+Sign screen with #6 and add a signature with #5 — or finish without one.</p>
+<div class="admonition note">
+<p class="admonition-title">What runs today</p>
+<p>The desktop simulator runs the whole flow: USB folder, interpreter,
+this review, signing. On the Raspberry Pi, <code>signer-pi-demo</code> runs this
+review on a built-in sample transaction and reports the decision;
+USB, interpreter and secure-element signing on the device are later
+phases. Binding what is shown to the exact bytes signed is tracked in
+<a href="https://github.com/paolino/air-gap-signer/issues/10">#10</a>.</p>
+</div>
+<p>The screen is small and a real transaction is not, so the review is a
+tree browsed one level at a time, each level showing its groups' entries
+indented under them. The rule that makes it safe: <strong>#5 does
+nothing until everything has been shown</strong> — every entry of every group,
+and every long value or group name read to its end. A transaction with
+no fields at all is refused outright. A transaction cannot be approved
+with a field still hidden in an unvisited branch or behind an ellipsis.</p>
+<h2 id="what-the-user-sees">What the user sees</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>REVIEW          7 left      outputs›_0     3 left      outputs›_0›addr… 1/1
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>fee: 171485                 address: addr…tjqp          address:
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>network: preprod      →     lovelace: 5000000     →      addr_test1qz2fxv2um
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>outputs                                                  yhttkxyxp8x0dlpdt3k
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  _0                                                     6cwng5pxj3jhsydzer3
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  _1                                                    …
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>validity_e…: 87654321
+</code></pre></div>
+<ul>
+<li>The <strong>header</strong> is the branch from the root to the level shown,
+  <code>outputs›_0</code>; at the top it names the mode, <code>REVIEW</code>. Each step right
+  adds a segment, each step left removes one. When it no longer fits, its start is cut so the deepest
+  segments stay visible. On the right it counts what is still to see,
+  and says <code>done</code> when nothing is left — or <code>2 waived</code> when some of it
+  was accepted unread.</li>
+<li>Below it are the <strong>entries</strong> of that level, and under each group its
+  own entries, indented. A group whose entries are listed under it is a
+  plain heading (<code>outputs</code>). A nested group (<code>_0</code>) shows just its name
+  — no <code>: value</code> — and right goes into it. Values are <code>key: value</code>. List items are
+  numbered <code>_0</code>, <code>_1</code>, …</li>
+<li><strong>Colour</strong> says what still blocks approval: a row is light red while
+  it, or anything under it, has not been shown yet — an unread cut value,
+  a group with fields not yet on screen — and white once it is done. The
+  header is amber.</li>
+<li>The cursor is an amber stripe at the right edge of its row, in the
+  margin past the last column, so it never covers text or changes its
+  colour.</li>
+<li>The cursor stops on fields and on nested groups, never on a heading —
+  unless the heading's name is cut and still has to be read.</li>
+<li>A value too long for its row is <strong>cut in the middle</strong> with <code>…</code>,
+  keeping the key and both ends of the value. A group whose name does
+  not fit is cut the same way.</li>
+<li>Opening a value shows the <strong>key on its own rows and the value wrapped
+  under it</strong>, a page at a time; the header shows the page. Opening a
+  group whose name was cut first shows its full name; right again goes
+  into it.</li>
+<li>Every character outside printable ASCII is <strong>spelled out</strong> as
+  <code>\u{hex}</code>, e.g. <code>東</code> as <code>\u{6771}</code>, and a backslash as <code>\\</code>.
+  Characters the font cannot draw, control characters, look-alikes and
+  literal escapes therefore never show as each other.</li>
+<li>Nothing shows as blank: an empty string is <code>""</code>, a string with spaces
+  at either end is quoted (<code>" x"</code>), an empty object is <code>{}</code>.</li>
+</ul>
+<h2 id="controls">Controls</h2>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>In a level</th>
+<th>In a value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>joystick up / down</td>
+<td>move the cursor to the previous / next field or nested group, skipping headings; a press at the last or first row wraps around; held, it repeats and stops there</td>
+<td>previous / next page</td>
+</tr>
+<tr>
+<td>joystick right</td>
+<td>on a nested group: go into it; on a value or a cut name: show it in full; on a heading: nothing</td>
+<td>from a group's full name: go into it</td>
+</tr>
+<tr>
+<td>joystick left</td>
+<td>back to the screen you came from, onto the row you left</td>
+<td>back to the level</td>
+</tr>
+<tr>
+<td>button #5</td>
+<td>on a light-red row (a branch or a cut value still to see): accept it unread; on a grey row: undo that</td>
+<td>—</td>
+</tr>
+<tr>
+<td>button #6</td>
+<td>next mode: Review → Sign → Keys</td>
+<td>next mode</td>
+</tr>
+<tr>
+<td>joystick press</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>In the desktop simulator the arrow keys stand in for the joystick,
+Enter for #5 and Tab for #6.</p>
+<h2 id="modes">Modes</h2>
+<p>Button #6 moves between three screens; the header names Sign and Keys,
+and Review shows <code>REVIEW</code> at the top and its branch below that.</p>
+<ul>
+<li><strong>Review</strong> — this page: browse, read, accept unread.</li>
+<li><strong>Sign</strong> — the keys able to sign, then <strong>Done</strong>. #5 on a key adds its
+  signature at once (<code>SIGNED slot 0</code>); #5 again removes it. There is no
+  confirmation and no reject: the toggle is the undo, and Done with no
+  signature signs nothing. Adding is refused while anything is left to
+  review. Each unread field counts once. Press #5 on the key to read those
+  fields in order. Each #5 advances one page. Left returns to Sign. The
+  last page returns to Sign ready, where signing requires a fresh press.
+  Signatures stay in memory until
+  Done. Without a key the header says <code>SIGN no key</code> and only Done is
+  offered.</li>
+<li><strong>Keys</strong> reads the four wallet slots directly from the secure element.
+  Each occupied row shows the slot number and the first 12 hexadecimal
+  characters of the SHA-256 hash of its 32-byte public key. Press right
+  or #5 to inspect the full public key. Down steps through the digits
+  on a small display, and left returns to the slots. If the chip read
+  fails, #5 retries. On the Pi, #6 also opens Keys while waiting for
+  a transaction stick.</li>
+</ul>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; Review: transaction interpreted
+    Review --&gt; Sign: #6
+    Sign --&gt; Keys: #6
+    Keys --&gt; Review: #6
+    Review --&gt; Review: browse, #5 accepts unread or undoes
+    Sign --&gt; Sign: #5 on a key adds or removes its signature (adding needs nothing left)
+    Sign --&gt; [*]: #5 on Done, with the signatures still added</code></pre>
+<h2 id="states-of-the-review">States of the review</h2>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; Level: transaction interpreted
+    Level --&gt; Level: up / down moves the cursor
+    Level --&gt; Level: right on a group enters it
+    Level --&gt; Level: left goes back up
+    Level --&gt; Value: right on a value
+    Value --&gt; Value: up / down turns the page
+    Value --&gt; Level: left
+    Level --&gt; Level: #5 on a light-red row accepts it unread, on a grey row undoes that
+    Level --&gt; Ready: nothing left to see
+    Ready --&gt; [*]: signing allowed in Sign mode</code></pre>
+<h2 id="what-counts-as-shown">What counts as shown</h2>
+<pre class="mermaid"><code>flowchart LR
+    E["entry"] --&gt;|"its row was on screen,&lt;br/&gt;at its level or nested"| S["seen"]
+    V["value or group name cut with …"] --&gt;|"shown whole, or opened&lt;br/&gt;and paged to its last page"| R["read"]
+    S --&gt; C{"every entry seen&lt;br/&gt;and every cut entry read?"}
+    R --&gt; C
+    C --&gt;|yes| OK["header says done&lt;br/&gt;Sign mode can sign"]
+    C --&gt;|no| N["header counts what is left&lt;br/&gt;signing is refused"]</code></pre>
+<p>An entry reaches the screen in its parent's level, or nested one level
+under its group in the level above; deeper branches must be visited. Opening a long value without
+paging to its end does not count.</p>
+<h2 id="accepting-without-reading">Accepting without reading</h2>
+<p>On a light-red row — a branch with something still to see, or a value
+cut with <code>…</code> and not read — #5 accepts it unread at once. It and
+everything under it stop blocking approval and turn <strong>grey</strong>, apart from
+what was actually read; #5 again on the grey row undoes it. When nothing
+is left the header says <code>2 waived</code> instead of <code>done</code>, so approval
+means "everything was shown, or knowingly accepted unread". On a row
+already read, #5 does nothing.</p>
+<h2 id="buttons-cannot-answer-a-screen-they-did-not-see">Buttons cannot answer a screen they did not see</h2>
+<p>Before each answer the device waits 100 ms for the panel to show the new
+screen, then until every control is released, then one debounce period,
+and throws away any press queued meanwhile. A press made before the
+screen changed, or held across the change, cannot approve what replaced
+it. Two narrower gaps remain — a press starting just before the queue
+is cleared, and a panel transfer that silently fails — and are tracked
+in <a href="https://github.com/paolino/air-gap-signer/issues/21">#21</a>.</p>
+<h2 id="decisions">Decisions</h2>
+<table>
+<thead>
+<tr>
+<th>Chosen</th>
+<th>Rejected</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tree browsed one level per screen with entries nested under their groups, branch in the header</td>
+<td>One flat list of every line; one level per screen with groups closed</td>
+<td>A real transaction is too deep for a flat list on 11 rows. Closed groups said nothing about what is inside; nesting one level shows it, and drilling down keeps each screen readable while the header says where you are.</td>
+</tr>
+<tr>
+<td>Cut long values in the middle, keep the key</td>
+<td>Wrap every value in the list; cut at the end</td>
+<td>Wrapping makes the list unreadable; cutting at the end hides the tail of an address, which is where address-poisoning attacks hide differences.</td>
+</tr>
+<tr>
+<td>#5 locked until everything was shown</td>
+<td>Let the user approve at any time</td>
+<td>A field the user never saw cannot have been checked.</td>
+</tr>
+<tr>
+<td>Joystick right and left to go in and out</td>
+<td>Joystick press to open</td>
+<td>Tried on the device: pressing the joystick in was awkward.</td>
+</tr>
+<tr>
+<td>Groups shown by name alone, no marker, no bold</td>
+<td>A <code>›</code> before each group; groups in bold</td>
+<td>Tried on the device: the marker was hard to read and the bold was confusing; a name without <code>: value</code> already says it is a group.</td>
+</tr>
+<tr>
+<td>No counts after nested groups</td>
+<td>Counts like <code>{2}</code> after nested groups</td>
+<td>Tried on the device: counts added noise; the list keys <code>_0</code>, <code>_1</code> already say it is a list.</td>
+</tr>
+<tr>
+<td>Light red for rows still to see, white when done, amber header</td>
+<td>One colour for everything; a counter only; a cyan header</td>
+<td>The counter says how much is left, the colour says where. Tried on the device: cyan read almost white on this panel, so the header lost its colour.</td>
+</tr>
+<tr>
+<td>Spell out non-ASCII as <code>\u{hex}</code></td>
+<td>Draw it with the font</td>
+<td>The font lacks most scripts; missing glyphs all look the same, so different values could look identical.</td>
+</tr>
+<tr>
+<td>List items as <code>_0</code>, <code>_1</code></td>
+<td><code>[0]</code>, <code>[1]</code></td>
+<td>Tried on the device: lighter to read. An object key literally named <code>_0</code> would look like a list item; transaction fields are not named that way.</td>
+</tr>
+<tr>
+<td>Cursor skips headings</td>
+<td>Cursor stops on every row</td>
+<td>A heading is not a field and right does nothing on it.</td>
+</tr>
+<tr>
+<td>Cursor as an amber stripe at the right edge</td>
+<td>Full-width bars (dark blue, light, amber, colour-inverted, grey), outline box, underline, left stripe, highlighter</td>
+<td>Tried on the device and on camera: bars made text unreadable on camera; the stripe keeps every row's text and colour as is.</td>
+</tr>
+<tr>
+<td>Only up and down repeat when held</td>
+<td>Every control repeats</td>
+<td>A held button must never confirm, reject, open or go back by itself.</td>
+</tr>
+<tr>
+<td>#5 accepts a branch or a cut value unread at once, #5 again undoes; grey rows; counted in the header</td>
+<td>Only full review; a confirmation question before accepting; values never accepted</td>
+<td>Tried on the device: the question was one press too many and the undo serves the same purpose; accepting stays visible (grey rows, <code>2 waived</code>).</td>
+</tr>
+<tr>
+<td>#6 cycles Review, Sign, Keys; #5 adds and removes a signature</td>
+<td>#6 rejects; a confirmation before signing; a Reject entry</td>
+<td>Tried on the device: a signature that can be removed needs no confirmation, and finishing with none already rejects.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.indexes", "navigation.sections", "navigation.path", "toc.integrate", "content.code.copy"], "search": "../../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      
+    
+  </body>
+</html>
