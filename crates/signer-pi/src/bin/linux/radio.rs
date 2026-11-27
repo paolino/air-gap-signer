@@ -12,12 +12,25 @@ pub(super) fn run_bluetooth(
         if let Some(event) = panel.take() {
             match event {
                 Event::Compare(code, reply) => {
-                    if !reply.is_closed() {
-                        let accepted = signer_pi::key_trial::confirm(
-                            hal,
-                            &format!("Pair laptop?\nCompare both screens\n{code:06}"),
-                        )?;
-                        let _ = reply.send(accepted);
+                    if reply.is_closed() {
+                        continue;
+                    }
+                    const ENDED: &str = "Bluetooth comparison ended";
+                    let pending = reply.clone();
+                    hal.buttons.set_abort(Some(Box::new(move || {
+                        pending.is_closed().then(|| HalError::Button(ENDED.into()))
+                    })));
+                    let result = signer_pi::key_trial::confirm(
+                        hal,
+                        &format!("Pair laptop?\nCompare both screens\n{code:06}"),
+                    );
+                    hal.buttons.set_abort(None);
+                    match result {
+                        Ok(accepted) => {
+                            let _ = reply.send(accepted);
+                        }
+                        Err(HalError::Button(reason)) if reason == ENDED => (),
+                        Err(e) => return Err(e.into()),
                     }
                 }
                 Event::Review(data) => {

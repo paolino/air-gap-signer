@@ -120,16 +120,19 @@ async fn connect(request: Connection<'_>) -> Result<Peripheral> {
     if matches.len() != 1 {
         #[cfg(not(target_os = "linux"))]
         let _ = adapter.stop_scan().await;
-        return Err(
-            "expected one matching signer; check power, Bluetooth permission and nearby panels"
-                .into(),
-        );
+        let message = match (matches.is_empty(), known.is_some()) {
+            (false, _) => "Found several signer panels. Leave only the intended panel nearby and retry.",
+            (true, true) => "Bluetooth scan finished without finding your enrolled panel advertising the signer service.",
+            (true, false) => "Bluetooth scan finished without finding a panel advertising the signer service.",
+        };
+        return Err(message.into());
     }
     let device = matches.pop().unwrap();
     // BlueZ may request authentication while opening the link. Pair through
     // the same session that owns the comparison agent before opening GATT.
     #[cfg(target_os = "linux")]
     if matches!(request, Connection::Pair(_)) {
+        eprintln!("Found the signer. Checking the Bluetooth bond.");
         pair_os(&session, &device).await?;
     }
     if !device.is_connected().await? {
@@ -181,7 +184,19 @@ async fn pair_os(session: &bluer::Session, device: &Peripheral) -> Result<()> {
             ..Default::default()
         })
         .await?;
-    peer.pair().await?;
+    if let Err(error) = peer.pair().await {
+        use bluer::ErrorKind;
+        if matches!(
+            error.kind,
+            ErrorKind::AuthenticationFailed
+                | ErrorKind::AuthenticationCanceled
+                | ErrorKind::AuthenticationRejected
+                | ErrorKind::AuthenticationTimeout
+        ) {
+            return Err(format!("Found the signer, but Bluetooth pairing did not complete ({error}). Open pairing with #5 on the panel and confirm the matching code on both screens before it expires.").into());
+        }
+        return Err(error.into());
+    }
     Ok(())
 }
 

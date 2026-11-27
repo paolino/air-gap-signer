@@ -15,10 +15,10 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::sync::oneshot;
+use tokio::sync::watch;
 
 pub enum Event {
-    Compare(u32, oneshot::Sender<bool>),
+    Compare(u32, watch::Sender<bool>),
     Review(Vec<u8>),
 }
 #[derive(Default)]
@@ -49,6 +49,34 @@ impl Panel {
     }
     pub fn take(&self) -> Option<Event> {
         self.0.lock().unwrap().event.take()
+    }
+    async fn compare(&self, device: Address, code: u32) -> Result<(), PairError> {
+        let (reply, mut answer) = watch::channel(false);
+        let deadline = {
+            let mut state = self.0.lock().unwrap();
+            let deadline = state
+                .until
+                .filter(|end| *end > Instant::now())
+                .ok_or(PairError::Rejected)?;
+            if state.event.is_some()
+                || state.mailbox.result().first() == Some(&1)
+                || state.peer.is_some_and(|peer| peer != device)
+            {
+                return Err(PairError::Rejected);
+            }
+            state.until = None;
+            state.event = Some(Event::Compare(code, reply));
+            deadline
+        };
+        tokio::time::timeout_at(deadline.into(), answer.changed())
+            .await
+            .map_err(|_| PairError::Rejected)?
+            .map_err(|_| PairError::Rejected)?;
+        if *answer.borrow() && Instant::now() < deadline {
+            Ok(())
+        } else {
+            Err(PairError::Rejected)
+        }
     }
     pub fn finish(&self, tag: Id, outcome: Result<Option<[u8; 64]>, ()>) {
         self.0.lock().unwrap().mailbox.finish(tag, outcome);
@@ -136,31 +164,7 @@ pub async fn start(keys: &Path) -> Result<Radio, Box<dyn Error>> {
                 let panel = pairing.clone();
                 let path = path.clone();
                 Box::pin(async move {
-                    let (tx, rx) = oneshot::channel();
-                    let end = {
-                        let mut s = panel.0.lock().unwrap();
-                        let end = s
-                            .until
-                            .take()
-                            .filter(|end| *end > Instant::now())
-                            .ok_or(PairError::Rejected)?;
-                        if s.event.is_some()
-                            || s.mailbox.result().first() == Some(&1)
-                            || s.peer.is_some_and(|peer| peer != req.device)
-                        {
-                            return Err(PairError::Rejected);
-                        }
-                        s.event = Some(Event::Compare(req.passkey, tx));
-                        end
-                    };
-                    if tokio::time::timeout_at(end.into(), rx)
-                        .await
-                        .ok()
-                        .and_then(Result::ok)
-                        != Some(true)
-                    {
-                        return Err(PairError::Rejected);
-                    }
+                    panel.compare(req.device, req.passkey).await?;
                     let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())
                         .map_err(|_| PairError::Rejected)?;
                     writeln!(tmp, "{}", req.device).map_err(|_| PairError::Rejected)?;
@@ -238,4 +242,52 @@ pub async fn start(keys: &Path) -> Result<Radio, Box<dyn Error>> {
         _service: service,
         _advertisement: advertisement,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_and_expired_comparisons_release_the_display_for_a_fresh_request() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let panel = Panel::default();
+                let laptop = Address([1; 6]);
+                panel.0.lock().unwrap().peer = Some(laptop);
+                assert!(panel.compare(laptop, 1).await.is_err());
+                panel.open_pairing();
+                assert!(panel.compare(Address([2; 6]), 2).await.is_err());
+                for (code, expire) in [(3, false), (4, true), (5, false)] {
+                    if expire {
+                        panel.0.lock().unwrap().until =
+                            Some(Instant::now() + Duration::from_millis(25));
+                    }
+                    let pairing = panel.clone();
+                    let call = tokio::spawn(async move { pairing.compare(laptop, code).await });
+                    tokio::task::yield_now().await;
+                    let Some(Event::Compare(shown, reply)) = panel.take() else {
+                        panic!("missing comparison");
+                    };
+                    assert_eq!(shown, code);
+                    if code == 5 {
+                        reply.send(true).unwrap();
+                        assert!(call.await.unwrap().is_ok());
+                        break;
+                    }
+                    if expire {
+                        assert!(call.await.unwrap().is_err());
+                    } else {
+                        call.abort();
+                        assert!(call.await.unwrap_err().is_cancelled());
+                    }
+                    assert!(reply.is_closed());
+                    assert!(reply.send(true).is_err());
+                    panel.open_pairing();
+                }
+            });
+    }
 }
