@@ -425,6 +425,7 @@ mod tests {
                 payload: b"hi".to_vec(),
                 interpreter_wasm: std::fs::read(path).expect("run `just build-wasm` first"),
                 signing_spec_cbor: SigningSpec {
+                    review_protocol: None,
                     label: "x".into(),
                     signable: Signable::Whole,
                     algorithm: SignAlgorithm::Ed25519,

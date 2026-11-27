@@ -5,4 +5,5 @@ pub mod key_menu;
 pub mod review;
 pub mod session;
 pub mod spec;
+#[cfg(feature = "wasm-sandbox")]
 pub mod wasm_sandbox;

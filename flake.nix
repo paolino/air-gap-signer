@@ -23,6 +23,9 @@
         # cross-compiling the Pi binaries.
         piCc = pkgs.pkgsCross.aarch64-multiplatform-musl.stdenv.cc;
       in {
+        packages = pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          pi-signer = import ./nix/pi-signer.nix { inherit pkgs rust piCc; src = self; };
+        };
         devShells.default = pkgs.mkShell ({
           inputsFrom =
             [ dev-assets-mkdocs.devShells.${system}.default ];
@@ -36,7 +39,14 @@
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER = "${piCc.targetPrefix}cc";
           CC_aarch64_unknown_linux_musl = "${piCc.targetPrefix}cc";
+          CFLAGS_aarch64_unknown_linux_musl = "-mno-outline-atomics";
           AR_aarch64_unknown_linux_musl = "${piCc.targetPrefix}ar";
         });
-      });
+      }) // {
+        nixosConfigurations.signer-pi = nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          specialArgs.signer = self.packages.x86_64-linux.pi-signer;
+          modules = [ ./nix/pi-appliance.nix ];
+        };
+      };
 }

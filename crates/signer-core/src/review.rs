@@ -116,6 +116,11 @@ struct Node {
 /// unopened)` state before it was accepted.
 type Waiver = (usize, Vec<(usize, bool, bool)>);
 
+pub(crate) struct UnreadPage {
+    node: usize,
+    page: usize,
+}
+
 pub struct Review {
     /// Node 0 is the root.
     nodes: Vec<Node>,
@@ -190,8 +195,39 @@ impl Review {
     /// Entries never shown, plus entries still cut with `…`: all must be
     /// shown before Confirm counts.
     pub fn remaining(&self) -> usize {
-        let count = |v: &[bool]| v.iter().filter(|&&b| b).count();
-        count(&self.unseen) + count(&self.unopened)
+        self.unseen
+            .iter()
+            .zip(&self.unopened)
+            .filter(|(u, c)| **u || **c)
+            .count()
+    }
+
+    pub(crate) fn first_unread(&self) -> Option<UnreadPage> {
+        let node = self
+            .unseen
+            .iter()
+            .zip(&self.unopened)
+            .position(|(u, c)| *u || *c)?;
+        Some(UnreadPage { node, page: 0 })
+    }
+
+    pub(crate) fn unread_view(&self, entry: &UnreadPage) -> View {
+        let pages = self.node_pages(entry.node);
+        let status = format!("{}/{} #5 next", entry.page + 1, pages.len());
+        View::Detail {
+            header: self.header(&self.branch(entry.node), &status),
+            rows: pages[entry.page].clone(),
+        }
+    }
+
+    pub(crate) fn advance_unread(&mut self, mut entry: UnreadPage) -> Option<UnreadPage> {
+        entry.page += 1;
+        if entry.page < self.node_pages(entry.node).len() {
+            return Some(entry);
+        }
+        self.unseen[entry.node] = false;
+        self.unopened[entry.node] = false;
+        self.first_unread()
     }
 
     pub fn handle(&mut self, event: ButtonEvent) -> Outcome {
@@ -459,7 +495,11 @@ impl Review {
     /// its key wrapped on its own rows, then the value wrapped and
     /// indented under it; a group as its full label.
     fn pages(&self) -> Vec<Vec<String>> {
-        let node = &self.nodes[self.selected()];
+        self.node_pages(self.selected())
+    }
+
+    fn node_pages(&self, id: usize) -> Vec<Vec<String>> {
+        let node = &self.nodes[id];
         let mut rows = Vec::new();
         if !node.children.is_empty() {
             rows = wrap(&full_text(node), self.cols);
@@ -523,6 +563,9 @@ impl Review {
     /// deepest segments stay visible, and `status` on the right.
     fn header(&self, branch: &str, status: &str) -> String {
         let room = self.cols.saturating_sub(status.chars().count() + 1);
+        if room == 0 {
+            return ellipsize(status, self.cols);
+        }
         let chars: Vec<char> = branch.chars().collect();
         let left: String = if chars.len() <= room {
             branch.to_string()
@@ -800,8 +843,8 @@ mod tests {
         let mut r = review(tx());
         assert_eq!(
             r.remaining(),
-            5,
-            "four fields inside the outputs, one long address"
+            4,
+            "four fields inside the outputs, including one long address"
         );
         assert_eq!(r.handle(ButtonEvent::Confirm), Outcome::Continue);
         assert!(level(&r).0.ends_with(" left"));

@@ -1,5 +1,17 @@
 # Air-Gapped Transaction Signer
 
+## Bluetooth prototype release
+
+The Raspberry Pi 3 Model B image runs a Cardano preprod signer with a local
+display, joystick and SE051. The desktop client pairs, sends an unsigned
+self-payment for physical review, and retrieves the verified signed transaction.
+
+See the [Bluetooth release guide](docs/bluetooth-release.md) for hardware,
+first boot, key enrollment, supported transactions and commands.
+
+## USB architecture
+
+
 Blockchain-agnostic air-gapped signing device for Raspberry Pi (4 or Zero 2W).
 
 Transactions arrive on a USB stick, get displayed for human review, and are signed by a hardware secure element (SE050) that never exposes private keys. The USB stick carries a WASM interpreter that knows how to parse the specific transaction format — the signer itself only knows how to run WASM, render JSON, and send hashes to the secure element.

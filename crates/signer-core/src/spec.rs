@@ -48,9 +48,17 @@ pub enum OutputSpec {
     WasmAssemble,
 }
 
+/// Select the panel's built-in transaction decoder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReviewProtocol {
+    CardanoConway,
+}
+
 /// Complete signing specification — deserialized from `sign.cbor` on the USB stick.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SigningSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_protocol: Option<ReviewProtocol>,
     pub label: String,
     pub signable: Signable,
     pub algorithm: SignAlgorithm,
@@ -79,6 +87,7 @@ mod tests {
     #[test]
     fn round_trip_whole_ed25519() {
         let spec = SigningSpec {
+            review_protocol: None,
             label: "Cardano Transaction".into(),
             signable: Signable::Whole,
             algorithm: SignAlgorithm::Ed25519,
@@ -93,6 +102,7 @@ mod tests {
     #[test]
     fn round_trip_hash_then_sign() {
         let spec = SigningSpec {
+            review_protocol: None,
             label: "Bitcoin PSBT".into(),
             signable: Signable::HashThenSign {
                 hash: HashAlgorithm::Sha256,
@@ -110,6 +120,7 @@ mod tests {
     #[test]
     fn round_trip_range() {
         let spec = SigningSpec {
+            review_protocol: None,
             label: "Custom Format".into(),
             signable: Signable::Range {
                 offset: 4,
@@ -127,6 +138,7 @@ mod tests {
     #[test]
     fn round_trip_hash_then_sign_range() {
         let spec = SigningSpec {
+            review_protocol: None,
             label: "Partial Hash".into(),
             signable: Signable::HashThenSign {
                 hash: HashAlgorithm::Blake2b256,

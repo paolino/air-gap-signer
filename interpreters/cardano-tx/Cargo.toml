@@ -9,6 +9,7 @@ description = "WASM interpreter: Cardano transaction CBOR to review JSON"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+pallas-codec = "1.4"
 pallas-traverse = "1.4"
 pallas-addresses = "1.4"
 pallas-primitives = "1.4"

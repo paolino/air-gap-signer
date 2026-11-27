@@ -13,6 +13,20 @@ const SIZE: usize = 240;
 /// Width of the cursor stripe at the right edge, in pixels.
 const CURSOR_WIDTH: usize = 4;
 
+/// Draw only the accepted movement count, including a visible final frame.
+pub fn show_pin_count(
+    display: &mut impl signer_hal::Display,
+    prompt: &str,
+    accepted: usize,
+) -> Result<(), HalError> {
+    use panel_input::PIN_LENGTH;
+    display.show_message(&format!("{accepted}/{PIN_LENGTH} moves. {prompt}"))?;
+    if accepted == PIN_LENGTH {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    Ok(())
+}
+
 /// Find the framebuffer device whose driver name is `name` by scanning
 /// `<sysfs>/fb*/name`. Linux numbers framebuffers in registration order,
 /// so the index is not fixed.

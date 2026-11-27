@@ -222,6 +222,29 @@ slot offers **Restore backup** if an archive exists or **Create + back up**
 otherwise. The menu stores the archive under `/var/lib/signer-pi/practice`.
 Sign mode continues to select eligible wallet keys by the transaction request.
 
+### Copy a practice backup on the panel
+
+1. Open **Keys → Practice key → File to FIDO** to put the existing encrypted
+   practice archive on a token. Unlock the file with its original token. When
+   prompted for the destination, you can keep that token inserted to make it
+   a self-contained source. Touch the token whenever it flashes.
+2. Choose **Copy FIDO to FIDO**. Insert only the source token and enter its PIN
+   on the panel. Check the practice fingerprint, replace the source with the
+   destination and enter the destination’s own PIN. Confirm the save.
+3. Wait for **FIDO backup verified** and the matching fingerprint. The panel
+   rediscovers the archive from the destination and recovers the same key.
+   Each copy can serve as the source for a later copy.
+4. On a fresh practice panel choose **Recover FIDO file**, then **Restore
+   backup** with that same token. Recovery creates the encrypted local file
+   without overwriting an existing one.
+
+A destination needs a configured PIN, discoverable credentials, hmac-secret,
+PIN/UV protocol 2 and large-blob storage. The practice tool accepts one signer
+archive per token. An interruption can leave an unused credential on the
+destination. Retry with the source available and wait for verification.
+During copying, the Pi handles the recovered key in process memory. Both
+tokens connect directly to the Pi. Keep this prototype for disposable keys.
+
 For the standalone lifecycle trial, run `signer-pi --practice-keys DIRECTORY` with the display, joystick, SE051 and
 a FIDO2 recovery token attached to the Pi. Use a fresh private directory on
 persistent storage. The trial uses SE051 test object `7DA03201`. The four
@@ -252,3 +275,128 @@ remain available. The file-backed credential uses the token’s
 only enrolled token makes this trial backup unrecoverable. The phone
 approval and chip policy required for actual wallet changes are separate
 work.
+
+### Chip-enforced joystick PIN bench test
+
+`se051-pin-check` uses two dedicated objects, 7DA03301 and 7DA03302, a public
+test sequence and a fresh Ed25519 test key. The funded practice key is in a
+different object. Run with the normal signer's I²C device available. The test
+locks the bus, checks that both test IDs are free before creating anything and
+verifies their absence after cleanup.
+
+On the Pi’s SE051, the chip refused a signature before authentication (6986),
+refused a changed sequence (6985), signed a random challenge after verification
+of the enrolled sequence, and refused another signature after the session
+closed (6986). The test verified the signature against the test public key.
+This tests the chip policy; personal enrollment and payment review require
+their own panel flows. The test requests five attempts at enrollment and uses
+one wrong entry. It does not exercise lockout.
+
+### Enroll the funded practice key on the Pi
+
+With the external camera off and the original recovery token inserted, open
+**Keys → Practice key → Enroll signing PIN**. Enter the token PIN using the
+keyboard, then touch the token to unlock the existing backup. Choose nine
+joystick moves and repeat them. Each entry starts at 0/9. Releasing a single
+direction advances the count, and 9/9 appears briefly before the next screen. The center is unused
+and #6 cancels entry. The SE051 enrollment requests a five-attempt limit.
+
+The panel imports the same key into a separate PIN-protected chip object. It
+checks that an unauthenticated session is refused and verifies a signature over
+a random challenge against the saved public key. It then displays the key
+fingerprint and asks whether to erase the old unprotected copy. Press #5 to
+remove it or #6 to keep it. An old copy still in the chip can still sign
+without the new PIN. **Finish PIN setup** resumes an interrupted migration.
+After removal, **Check signing PIN** repeats the challenge test with the
+enrolled sequence. The encrypted FIDO backup remains available for recovery.
+This operation does not sign a transaction. The Linux Pi is the bench controller
+and receives the sequence and decrypted backup in its own memory.
+
+### Preprod self-payment on the bench
+
+The bench host resolves a single ADA-only UTxO on preprod and uses
+`cardano-cli conway transaction build-raw` to return it to the same enterprise
+address after fees. It stages the raw transaction in `payment.cbor` and the
+independently calculated transaction ID and input details in `plan.json` in
+a trusted local directory. The plan fields are `input_tx`, `input_index`,
+`input_lovelace`, `fee`, `expires_slot`, `tip_slot`, `tip_unix` (seconds)
+and `tx_id`. The host supplies the preprod chain context. The Pi reconstructs
+the permitted transaction using the enrolled practice public key, checks all
+bytes and the ID, and estimates expiry from the staged tip and its clock.
+
+Run `signer-pi --preprod-payment DIRECTORY` with the panel available. Review
+the transaction, press #6 for Sign and #5 on Practice key, confirm the fee
+and enter the nine-move PIN. Select Done to write `payment.signature`.
+The host verifies the signature with `cardano-witness`, assembles the
+transaction and submits it separately. The ordinary USB preview and its
+untrusted interpreter cannot reach this bench signing path.
+
+### Request a preprod witness over Bluetooth
+
+Run the appliance with `signer-pi --bluetooth`. At its idle screen press **#5 Pair laptop**.
+On the laptop install the Rust client with `cargo install --locked --path crates/signer-cli`
+from the checkout or use a native build of the `signer` executable.
+
+```console
+signer pair
+signer sign --tx-body payment.txbody --out payment.witness
+```
+
+Pairing opens for 60 seconds. Compare the six digits on both screens. On
+Linux type `yes` at the CLI prompt and confirm on the board. Windows uses
+the system pairing dialog. On macOS allow Bluetooth for your terminal and
+confirm the system prompt. The panel accepts one laptop. The OS retains its
+Bluetooth bond and the CLI pins the board's payment verification key. The
+joystick signing PIN is entered only on the panel.
+
+If the laptop forgets the Bluetooth device, reopen pairing with **#5** and
+run `signer pair` again. The client reconnects to its saved device and checks
+the payment verification key against the existing enrollment. Keep
+`panel.json` when repairing a lost bond.
+
+Place the preprod `plan.json` described above beside the transaction or use
+`--plan PATH`. Review the payment and confirm on the panel. The CLI verifies
+the witness against your enrolled key and the original body before creating
+the output file. Assemble and submit separately. The panel accepts the same
+one-input, ADA-only preprod self-payment as the staged bench path. The laptop
+supplies the resolved input and chain-tip context. Check the Pi clock before
+reviewing a time-limited payment.
+
+After a disconnect, repeat the identical command to collect the in-progress
+or completed result. The panel retains its most recent result in memory until
+another transaction is accepted or the service restarts. After either event,
+resending a previous request needs a fresh physical review and PIN. Existing
+witness files are protected against overwrites.
+
+The protocol uses an advertised BLE GATT service, authenticated encrypted
+reads/writes, 20-byte maximum write frames and one pending review. Key
+management stays accessible with #6. An inserted transaction stick takes
+the panel into USB review; remove it to return to the idle pairing screen.
+
+### Spare NixOS card for the Pi 3 Model B
+
+Build `nixosConfigurations.signer-pi.config.system.build.sdImage` with
+`nix build .#nixosConfigurations.signer-pi.config.system.build.sdImage`.
+The Rust executable builds on x86_64 Linux for aarch64 musl. Nix also needs
+an aarch64 Linux builder or a configured aarch64 emulator for image assembly.
+The compressed disk image is under `result/sd-image/`.
+
+The image boots the local signer and enables the Bluetooth controller.
+For bench administration it provides the `Signer-Pi` Wi-Fi network at
+`10.42.0.1`. Provision a unique WPA passphrase in
+`/var/lib/signer-appliance/wifi-passphrase` and an SSH public key in
+`/root/.ssh/authorized_keys` on the card's Linux filesystem. Keep those
+files private. For an existing bench board, its encrypted backup and public
+records live in `/var/lib/signer-pi/practice`; preserve them when preparing a
+replacement card. The image itself contains no operator credentials. The Pi 3
+has no battery-backed clock, so check its time before testing an expiring
+preprod transaction.
+
+As soon as Linux exposes the bonnet framebuffer, it shows the current boot
+operation, elapsed time, and estimated seconds to Bluetooth readiness. The
+display refreshes every five seconds and on stage changes. Initial estimates
+are 180 seconds for first-boot setup and 60 seconds for an ordinary boot.
+The panel uses a recorded normal startup time when available and shows how
+far an estimate has been exceeded. Firmware execution before the SPI display
+driver loads has no output on the bonnet. The same updates are available in
+the kernel log under `signer-boot`.

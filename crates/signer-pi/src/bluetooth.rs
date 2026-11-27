@@ -1,0 +1,335 @@
+//! BlueZ delivers only authenticated encrypted ATT operations to these callbacks.
+//! A single laptop is enrolled by numeric comparison on the physical panel.
+use bluer::{
+    adv::Advertisement,
+    agent::{Agent, ReqError as PairError},
+    gatt::local::*,
+    Adapter, Address,
+};
+use signer_link::{Id, Mailbox, CLOCK, KEY, REQUEST, RESULT, SERVICE};
+use std::{
+    error::Error,
+    fs,
+    io::{ErrorKind, Write},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use tokio::sync::watch;
+
+pub enum Event {
+    Compare(u32, watch::Sender<bool>),
+    Review(Vec<u8>),
+    Clock { unix: u64, received: Instant },
+}
+#[derive(Default)]
+struct State {
+    until: Option<Instant>,
+    peer: Option<Address>,
+    mailbox: Mailbox,
+    event: Option<Event>,
+}
+#[derive(Clone, Default)]
+pub struct Panel(Arc<Mutex<State>>);
+impl Panel {
+    pub fn open_pairing(&self) {
+        self.0.lock().unwrap().until = Some(Instant::now() + Duration::from_secs(60));
+    }
+    pub fn pairing(&self) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .until
+            .is_some_and(|end| end > Instant::now())
+    }
+    pub fn close_pairing(&self) {
+        self.0.lock().unwrap().until = None;
+    }
+    pub fn ready(&self) -> bool {
+        self.0.lock().unwrap().event.is_some()
+    }
+    pub fn take(&self) -> Option<Event> {
+        self.0.lock().unwrap().event.take()
+    }
+    async fn compare(&self, device: Address, code: u32) -> Result<(), PairError> {
+        let (reply, mut answer) = watch::channel(false);
+        let deadline = {
+            let mut state = self.0.lock().unwrap();
+            let deadline = state
+                .until
+                .filter(|end| *end > Instant::now())
+                .ok_or(PairError::Rejected)?;
+            if state.event.is_some()
+                || state.mailbox.result().first() == Some(&1)
+                || state.peer.is_some_and(|peer| peer != device)
+            {
+                return Err(PairError::Rejected);
+            }
+            state.until = None;
+            state.event = Some(Event::Compare(code, reply));
+            deadline
+        };
+        tokio::time::timeout_at(deadline.into(), answer.changed())
+            .await
+            .map_err(|_| PairError::Rejected)?
+            .map_err(|_| PairError::Rejected)?;
+        if *answer.borrow() && Instant::now() < deadline {
+            Ok(())
+        } else {
+            Err(PairError::Rejected)
+        }
+    }
+    pub fn finish(&self, tag: Id, outcome: Result<Option<[u8; 64]>, ()>) {
+        self.0.lock().unwrap().mailbox.finish(tag, outcome);
+    }
+}
+
+async fn check_peer(panel: &Panel, adapter: &Adapter, peer: Address) -> ReqResult<()> {
+    if panel.0.lock().unwrap().peer != Some(peer)
+        || !adapter
+            .device(peer)
+            .map_err(|_| ReqError::Failed)?
+            .is_paired()
+            .await
+            .map_err(|_| ReqError::Failed)?
+    {
+        return Err(ReqError::NotAuthorized);
+    }
+    Ok(())
+}
+
+fn read_characteristic(
+    uuid: bluer::Uuid,
+    panel: Panel,
+    adapter: Adapter,
+    key_file: PathBuf,
+) -> Characteristic {
+    Characteristic {
+        uuid,
+        read: Some(CharacteristicRead {
+            read: true,
+            secure_read: true,
+            encrypt_authenticated_read: true,
+            fun: Box::new(move |req| {
+                let (panel, adapter, key_file) = (panel.clone(), adapter.clone(), key_file.clone());
+                Box::pin(async move {
+                    check_peer(&panel, &adapter, req.device_address).await?;
+                    let bytes = if uuid == KEY {
+                        let key = fs::read(key_file).map_err(|_| ReqError::Failed)?;
+                        if key.len() != 32 {
+                            return Err(ReqError::Failed);
+                        }
+                        key
+                    } else if uuid == CLOCK {
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_err(|_| ReqError::Failed)?
+                            .as_secs()
+                            .to_le_bytes()
+                            .to_vec()
+                    } else {
+                        panel.0.lock().unwrap().mailbox.result().to_vec()
+                    };
+                    bytes
+                        .get(usize::from(req.offset)..)
+                        .map(Vec::from)
+                        .ok_or(ReqError::InvalidOffset)
+                })
+            }),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+pub struct Radio {
+    pub panel: Panel,
+    _session: bluer::Session,
+    _agent: bluer::agent::AgentHandle,
+    _service: ApplicationHandle,
+    _advertisement: bluer::adv::AdvertisementHandle,
+}
+
+pub async fn start(keys: &Path) -> Result<Radio, Box<dyn Error>> {
+    let session = bluer::Session::new().await?;
+    let adapter = session.default_adapter().await?;
+    adapter.set_powered(true).await?;
+    let path = keys
+        .parent()
+        .ok_or("missing signer state")?
+        .join("bluetooth-peer");
+    let panel = Panel::default();
+    match fs::read_to_string(&path) {
+        Ok(s) => panel.0.lock().unwrap().peer = Some(s.trim().parse()?),
+        Err(e) if e.kind() == ErrorKind::NotFound => (),
+        Err(e) => return Err(e.into()),
+    }
+    let pairing = panel.clone();
+    let agent = session
+        .register_agent(Agent {
+            request_default: true,
+            request_confirmation: Some(Box::new(move |req| {
+                let panel = pairing.clone();
+                let path = path.clone();
+                Box::pin(async move {
+                    panel.compare(req.device, req.passkey).await?;
+                    let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())
+                        .map_err(|_| PairError::Rejected)?;
+                    writeln!(tmp, "{}", req.device).map_err(|_| PairError::Rejected)?;
+                    tmp.as_file().sync_all().map_err(|_| PairError::Rejected)?;
+                    tmp.persist(path).map_err(|_| PairError::Rejected)?;
+                    panel.0.lock().unwrap().peer = Some(req.device);
+                    Ok(())
+                })
+            })),
+            ..Default::default()
+        })
+        .await?;
+    adapter.set_pairable(true).await?;
+    let writer = panel.clone();
+    let a = adapter.clone();
+    let write = Characteristic {
+        uuid: REQUEST,
+        write: Some(CharacteristicWrite {
+            write: true,
+            secure_write: true,
+            encrypt_authenticated_write: true,
+            method: CharacteristicWriteMethod::Fun(Box::new(move |bytes, req| {
+                let (panel, adapter) = (writer.clone(), a.clone());
+                Box::pin(async move {
+                    check_peer(&panel, &adapter, req.device_address).await?;
+                    if req.offset != 0 || req.prepare_authorize {
+                        return Err(ReqError::InvalidOffset);
+                    }
+                    let mut s = panel.0.lock().unwrap();
+                    if s.event.is_some() {
+                        return Err(ReqError::InProgress);
+                    }
+                    if let Some(data) = s
+                        .mailbox
+                        .write(&bytes)
+                        .map_err(|_| ReqError::NotPermitted)?
+                    {
+                        s.event = Some(Event::Review(data));
+                    }
+                    Ok(())
+                })
+            })),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let key = keys.join("signing-pin-public.key");
+    let mut clock = read_characteristic(CLOCK, panel.clone(), adapter.clone(), key.clone());
+    let clock_panel = panel.clone();
+    let clock_adapter = adapter.clone();
+    clock.write = Some(CharacteristicWrite {
+        write: true,
+        secure_write: true,
+        encrypt_authenticated_write: true,
+        method: CharacteristicWriteMethod::Fun(Box::new(move |bytes, req| {
+            let (panel, adapter) = (clock_panel.clone(), clock_adapter.clone());
+            Box::pin(async move {
+                check_peer(&panel, &adapter, req.device_address).await?;
+                if req.offset != 0 || req.prepare_authorize {
+                    return Err(ReqError::InvalidOffset);
+                }
+                let unix =
+                    u64::from_le_bytes(bytes.try_into().map_err(|_| ReqError::InvalidValueLength)?);
+                // Dates supported by this appliance: 2024 through 2099.
+                if !(1_704_067_200..4_102_444_800).contains(&unix) {
+                    return Err(ReqError::NotPermitted);
+                }
+                let mut state = panel.0.lock().unwrap();
+                if state.event.is_some() || state.mailbox.result().first() == Some(&1) {
+                    return Err(ReqError::InProgress);
+                }
+                state.event = Some(Event::Clock {
+                    unix,
+                    received: Instant::now(),
+                });
+                Ok(())
+            })
+        })),
+        ..Default::default()
+    });
+    let service = adapter
+        .serve_gatt_application(Application {
+            services: vec![Service {
+                primary: true,
+                uuid: SERVICE,
+                characteristics: vec![
+                    read_characteristic(KEY, panel.clone(), adapter.clone(), key.clone()),
+                    write,
+                    clock,
+                    read_characteristic(RESULT, panel.clone(), adapter.clone(), key),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .await?;
+    let advertisement = adapter
+        .advertise(Advertisement {
+            service_uuids: [SERVICE].into_iter().collect(),
+            local_name: Some("Signer".into()),
+            discoverable: Some(true),
+            ..Default::default()
+        })
+        .await?;
+    Ok(Radio {
+        panel,
+        _session: session,
+        _agent: agent,
+        _service: service,
+        _advertisement: advertisement,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_and_expired_comparisons_release_the_display_for_a_fresh_request() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let panel = Panel::default();
+                let laptop = Address([1; 6]);
+                panel.0.lock().unwrap().peer = Some(laptop);
+                assert!(panel.compare(laptop, 1).await.is_err());
+                panel.open_pairing();
+                assert!(panel.compare(Address([2; 6]), 2).await.is_err());
+                for (code, expire) in [(3, false), (4, true), (5, false)] {
+                    if expire {
+                        panel.0.lock().unwrap().until =
+                            Some(Instant::now() + Duration::from_millis(25));
+                    }
+                    let pairing = panel.clone();
+                    let call = tokio::spawn(async move { pairing.compare(laptop, code).await });
+                    tokio::task::yield_now().await;
+                    let Some(Event::Compare(shown, reply)) = panel.take() else {
+                        panic!("missing comparison");
+                    };
+                    assert_eq!(shown, code);
+                    if code == 5 {
+                        reply.send(true).unwrap();
+                        assert!(call.await.unwrap().is_ok());
+                        break;
+                    }
+                    if expire {
+                        assert!(call.await.unwrap().is_err());
+                    } else {
+                        call.abort();
+                        assert!(call.await.unwrap_err().is_cancelled());
+                    }
+                    assert!(reply.is_closed());
+                    assert!(reply.send(true).is_err());
+                    panel.open_pairing();
+                }
+            });
+    }
+}

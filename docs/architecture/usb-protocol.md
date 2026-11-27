@@ -15,14 +15,25 @@ Use the `usb-pack` CLI:
 ```bash
 usb-pack \
   --payload tx.raw \
-  --interpreter cardano-cbor.wasm \
+  --interpreter cardano_tx.wasm \
   --output /mnt/usb \
   --label "Cardano Transaction" \
   --algorithm ed25519 \
-  --key-id payment-0 \
-  --signable hash-blake2b \
-  --output-mode wasm-assemble
+  --key-slot 0 \
+  --signable cardano-body \
+  --output-mode signature-only
 ```
+
+For Conway transactions, `--signable cardano-body` accepts raw transaction
+CBOR or the `Tx ConwayEra` text envelope from `cardano-cli`. It writes the full
+transaction CBOR for review and selects the original body bytes for Blake2b-256
+hashing. The resulting digest is the transaction ID. Current packages also
+identify the Conway review protocol. For these requests the Pi derives the
+display fields and transaction ID using its installed decoder. It checks the
+requested byte range and algorithm before presenting a read-only preview.
+Earlier packages without the protocol field use the original interpreter path. The package itself carries
+no signing authority. A Cardano witness requires both the payment verification
+key and its signature over that digest.
 
 ## Mount protocol
 
@@ -57,3 +68,20 @@ During first-time provisioning, the device uses **two separate USB sticks**:
 
 - Written during setup after key generation/recovery.
 - Used to register the public key on-chain.
+
+## Assemble a Conway key witness on the host
+
+Given a raw 32-byte panel public key and a 64-byte signature, the host can check
+the signature and write a witness file for the same transaction.
+
+```bash
+cardano-witness --payload tx.raw --public-key practice-public.key \
+  --signature signed.bin --output payment.witness
+cardano-cli conway transaction assemble --tx-body-file tx.raw \
+  --witness-file payment.witness --out-file signed.tx
+```
+
+The example assumes `tx.raw` is a Conway text envelope. The packer and witness
+tool also accept raw transaction CBOR. The regular Pi service currently offers
+public key inventory and transaction review. Its signing and signature export
+are pending.

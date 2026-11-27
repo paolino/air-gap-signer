@@ -4,6 +4,7 @@ use gpiocdev::Request;
 use panel_input::{EntryEvent, PinEntry, Sequence};
 use signer_hal::{Display, HalError};
 use signer_pi::buttons::{DEBOUNCE, POLL, SETTLE};
+use signer_pi::display::show_pin_count;
 use std::thread;
 
 // BCM line and corresponding panel_input bit. GPIO4 (centre) is unused.
@@ -45,14 +46,18 @@ impl Pad {
 
     fn enter(&mut self, display: &mut impl Display, prompt: &str) -> Result<Sequence, HalError> {
         loop {
-            display.show_message(prompt)?;
+            show_pin_count(display, prompt, 0)?;
             thread::sleep(SETTLE);
             let mut entry = PinEntry::default();
             loop {
                 match entry.sample(self.down()?) {
                     EntryEvent::Pending => thread::sleep(POLL),
+                    EntryEvent::Progress(count) => show_pin_count(display, prompt, count)?,
                     EntryEvent::Restart => break,
-                    EntryEvent::Complete(sequence) => return Ok(sequence),
+                    EntryEvent::Complete(sequence) => {
+                        show_pin_count(display, prompt, panel_input::PIN_LENGTH)?;
+                        return Ok(sequence);
+                    }
                 }
             }
         }

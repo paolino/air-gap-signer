@@ -4,6 +4,7 @@
 //! - `se051-keys create <slot>` puts a fresh key in an empty slot and
 //!   prints its public key (hex);
 //! - `se051-keys public <slot>` prints it;
+//! - `se051-keys practice-public` reads the dedicated practice object;
 //! - `se051-keys sign <slot> <message hex>` prints the signature (hex),
 //!   already checked against the public key;
 //! - `se051-keys delete <slot>` erases the key.
@@ -12,6 +13,11 @@
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let run = || -> Result<String, Box<dyn std::error::Error>> {
+        if args.as_slice() == ["practice-public"] {
+            return Ok(signer_pi::key_trial::current_public()?
+                .map(hex::encode)
+                .unwrap_or_else(|| "empty".into()));
+        }
         let mut se = signer_pi::se051::Se051::open("/dev/i2c-1")?;
         let slot = |s: &str| s.parse::<u8>();
         match args
@@ -46,7 +52,7 @@ fn main() {
                 Ok("deleted".into())
             }
             _ => Err(
-                "usage: se051-keys list | create|public|delete <slot> | sign <slot> <message hex>"
+                "usage: se051-keys practice-public | list | create|public|delete <slot> | sign <slot> <message hex>"
                     .into(),
             ),
         }

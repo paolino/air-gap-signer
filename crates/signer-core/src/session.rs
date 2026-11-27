@@ -8,7 +8,7 @@
 //! review stays complete: undoing an accepted branch drops them.
 
 use crate::key_menu::{KeyMenu, PublicSlots};
-use crate::review::{ButtonEvent, Review, Row, View};
+use crate::review::{ButtonEvent, Review, Row, UnreadPage, View};
 use crate::spec::SignAlgorithm;
 
 /// A key the device holds.
@@ -49,6 +49,7 @@ pub enum Finish {
 }
 
 pub struct Session {
+    unread: Option<UnreadPage>,
     key_menu: KeyMenu,
     review: Review,
     mode: Mode,
@@ -79,6 +80,7 @@ impl Session {
             .filter(|k| allowed.contains(&(k.slot, k.algorithm)))
             .collect();
         Self {
+            unread: None,
             key_menu: KeyMenu::new(None, review.screen_rows()),
             review,
             mode: Mode::Review,
@@ -101,6 +103,14 @@ impl Session {
 
     pub fn handle(&mut self, event: ButtonEvent, signer: &mut dyn Signer) -> Finish {
         self.notice = None;
+        if let Some(entry) = self.unread.take() {
+            self.unread = match event {
+                ButtonEvent::Confirm => self.review.advance_unread(entry),
+                ButtonEvent::Back | ButtonEvent::Mode | ButtonEvent::Reject => None,
+                _ => Some(entry),
+            };
+            return Finish::Continue;
+        }
         if event == ButtonEvent::Mode {
             self.mode = match self.mode {
                 Mode::Review => Mode::Sign,
@@ -156,7 +166,7 @@ impl Session {
                 self.signatures[self.cursor] = None;
             }
             ButtonEvent::Confirm if self.review.remaining() > 0 => {
-                self.notice = Some(format!("{} left to review", self.review.remaining()));
+                self.unread = self.review.first_unread();
             }
             ButtonEvent::Confirm => match signer.sign(self.keys[self.cursor].slot, &self.message) {
                 Ok(sig) => self.signatures[self.cursor] = Some(sig),
@@ -188,6 +198,9 @@ impl Session {
     }
 
     pub fn view(&self) -> View {
+        if let Some(entry) = &self.unread {
+            return self.review.unread_view(entry);
+        }
         let row = |i: usize, text: String| Row {
             text,
             selected: i == self.cursor,
@@ -206,7 +219,7 @@ impl Session {
                 let left = match (self.keys.len(), self.review.remaining()) {
                     (0, _) => "no key".to_string(),
                     (_, 0) => "ready".to_string(),
-                    (_, n) => format!("{n} left"),
+                    (_, n) => format!("{n} left #5 read"),
                 };
                 let mut rows: Vec<Row> = self
                     .keys
@@ -336,7 +349,34 @@ mod tests {
         to_sign(&mut s, &mut f);
         s.handle(ButtonEvent::Confirm, &mut f);
         assert!(f.signed.is_empty());
-        assert!(rows(&s).0.contains("left"), "{:?}", rows(&s));
+        assert!(matches!(s.view(), View::Detail { .. }));
+        s.handle(ButtonEvent::Back, &mut f);
+        assert!(rows(&s).0.contains("1 left"));
+        s.handle(ButtonEvent::Confirm, &mut f);
+        s.handle(ButtonEvent::Confirm, &mut f);
+        assert!(rows(&s).0.contains("ready"));
+        assert!(f.signed.is_empty());
+    }
+
+    #[test]
+    fn guided_reading_displays_every_page_and_returns_without_signing() {
+        let mut f = fake();
+        let address = "x".repeat(500);
+        let mut s = session(
+            serde_json::json!({"outputs":[{"address":address,"amount":"2 ADA"}]}),
+            &f,
+        );
+        to_sign(&mut s, &mut f);
+        assert!(rows(&s).0.contains("2 left"));
+        s.handle(ButtonEvent::Confirm, &mut f);
+        let mut shown = String::new();
+        while let View::Detail { rows, .. } = s.view() {
+            shown.extend(rows.iter().map(|line| line.trim_start()));
+            s.handle(ButtonEvent::Confirm, &mut f);
+        }
+        assert_eq!(shown, format!("address:{address}amount:2 ADA"));
+        assert!(rows(&s).0.contains("ready"));
+        assert!(f.signed.is_empty());
     }
 
     #[test]

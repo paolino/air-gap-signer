@@ -1,5 +1,6 @@
 [package]
 name = "usb-pack"
+default-run = "usb-pack"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +11,13 @@ name = "usb-pack"
 path = "src/main.rs"
 
 [dependencies]
-signer-core = { path = "../signer-core" }
+signer-core = { path = "../signer-core", default-features = false }
 ciborium.workspace = true
 serde.workspace = true
 clap = { version = "4", features = ["derive"] }
+hex.workspace = true
+serde_json.workspace = true
+pallas-codec = "1.4"
+cardano-tx = { path = "../../interpreters/cardano-tx" }
+ed25519-dalek.workspace = true
+tempfile = "3"

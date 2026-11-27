@@ -189,22 +189,35 @@ impl<D: Read + Write> Device<D> {
     /// key, so the token can also hold the backup (needs the PIN and a
     /// touch); its id.
     pub fn enrol(&mut self, pin: &str) -> Result<Vec<u8>, FidoError> {
-        self.enrol_backup(pin, true)
+        self.enrol_backup(pin, true, None)
     }
 
     /// File-backed backups carry their credential handle, so they require
     /// neither a resident account nor storage in the token's large-blob array.
     pub fn enrol_file(&mut self, pin: &str) -> Result<Vec<u8>, FidoError> {
-        self.enrol_backup(pin, false)
+        self.enrol_backup(pin, false, None)
     }
 
-    fn enrol_backup(&mut self, pin: &str, resident: bool) -> Result<Vec<u8>, FidoError> {
+    pub fn enrol_copy(
+        &mut self,
+        pin: &str,
+        source_id: Option<&[u8]>,
+    ) -> Result<Vec<u8>, FidoError> {
+        self.enrol_backup(pin, true, source_id)
+    }
+
+    fn enrol_backup(
+        &mut self,
+        pin: &str,
+        resident: bool,
+        exclude: Option<&[u8]>,
+    ) -> Result<Vec<u8>, FidoError> {
         let (_, auth) = self.pin_token(pin, PERMIT_MAKE_CREDENTIAL)?;
         let mut extensions = vec![(text("hmac-secret"), Value::Bool(true))];
         if resident {
             extensions.push((text("largeBlobKey"), Value::Bool(true)));
         }
-        let request = map(vec![
+        let mut request = vec![
             (int(1), Value::Bytes(CLIENT_DATA_HASH.to_vec())),
             (int(2), map(vec![(text("id"), text(RP_ID))])),
             (
@@ -224,12 +237,23 @@ impl<D: Read + Write> Device<D> {
                     (text("type"), text("public-key")),
                 ])]),
             ),
+        ];
+        if let Some(id) = exclude {
+            request.push((
+                int(5),
+                Value::Array(vec![map(vec![
+                    (text("id"), Value::Bytes(id.to_vec())),
+                    (text("type"), text("public-key")),
+                ])]),
+            ));
+        }
+        request.extend([
             (int(6), map(extensions)),
             (int(7), map(vec![(text("rk"), Value::Bool(resident))])),
             (int(8), Value::Bytes(auth.authenticate(&CLIENT_DATA_HASH))),
             (int(9), int(2)),
         ]);
-        let reply = self.cbor(MAKE_CREDENTIAL, Some(request))?;
+        let reply = self.cbor(MAKE_CREDENTIAL, Some(map(request)))?;
         let auth = bytes(field(&reply, 2)?)?;
         // rpIdHash 32 | flags 1 | counter 4 | aaguid 16 | idLen 2 | id
         let len = u16::from_be_bytes(
@@ -333,7 +357,10 @@ impl<D: Read + Write> Device<D> {
                 .unwrap_or(1),
         };
         let mut all = vec![first];
-        for _ in 1..count.min(64) {
+        if count > 64 {
+            return Err(protocol("too many credentials to enumerate safely"));
+        }
+        for _ in 1..count {
             let next = self.cbor(GET_NEXT_ASSERTION, None)?;
             all.push(Self::parse_assertion(&next, salt.is_some(), &shared)?);
         }
@@ -469,6 +496,53 @@ impl<D: Read + Write> Device<D> {
                 Some((a.credential_id, backup))
             })
             .ok_or_else(|| protocol(crate::large_blob::BlobError::Missing.to_string()))
+    }
+
+    /// Enumerate stored signer archives. Refuse ambiguity, including on readback.
+    /// Unfinished enrollments have no blob and can be skipped.
+    pub fn resident_backup(&mut self, pin: &str) -> Result<Option<StoredBackup>, FidoError> {
+        let array = self.read_blobs()?;
+        let entries = crate::large_blob::parse(&array).map_err(|e| protocol(e.to_string()))?;
+        let assertions = match self.assertions(None, None, pin) {
+            Err(FidoError::Status(0x2e)) => return Ok(None),
+            other => other?,
+        };
+        let mut found = None;
+        for assertion in assertions {
+            if let Some(key) = assertion.large_blob_key {
+                for data in entries
+                    .iter()
+                    .filter_map(|e| crate::large_blob::open(&key, e))
+                {
+                    if found.is_some() {
+                        return Err(protocol("multiple signer backups on token"));
+                    }
+                    found = Some(StoredBackup {
+                        id: assertion.credential_id.clone(),
+                        data,
+                    });
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    pub fn check_resident_backup_support(&mut self) -> Result<(), FidoError> {
+        self.check_file_backup_support()?;
+        let info = self.cbor(GET_INFO, None)?;
+        let options = field(&info, 4)?
+            .as_map()
+            .ok_or_else(|| protocol("missing token options"))?;
+        if !["rk", "largeBlobs"]
+            .iter()
+            .all(|name| options.contains(&(text(name), Value::Bool(true))))
+            || !field(&info, 2)?
+                .as_array()
+                .is_some_and(|list| list.contains(&text("largeBlobKey")))
+        {
+            return Err(protocol("token lacks on-token backup storage"));
+        }
+        Ok(())
     }
 
     /// The file-backed trial uses hmac-secret and PIN/UV protocol 2.
@@ -691,21 +765,43 @@ fn bytes(v: &Value) -> Result<&[u8], FidoError> {
         .ok_or_else(|| protocol("expected bytes"))
 }
 
-/// The first `hidraw` device whose report descriptor declares the FIDO
-/// usage page (0xF1D0).
-pub fn find_token(sys: &std::path::Path) -> Option<std::path::PathBuf> {
+pub struct StoredBackup {
+    pub id: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
+fn token_paths(sys: &std::path::Path) -> impl Iterator<Item = std::path::PathBuf> + '_ {
     let mut names: Vec<_> = std::fs::read_dir(sys)
-        .ok()?
+        .into_iter()
+        .flatten()
         .flatten()
         .map(|e| e.file_name())
         .collect();
     names.sort();
-    names.into_iter().find_map(|n| {
+    names.into_iter().filter_map(move |n| {
         let desc = std::fs::read(sys.join(&n).join("device/report_descriptor")).ok()?;
         desc.windows(3)
             .any(|w| w == [0x06, 0xd0, 0xf1])
             .then(|| std::path::Path::new("/dev").join(n))
     })
+}
+
+pub fn find_token(sys: &std::path::Path) -> Option<std::path::PathBuf> {
+    token_paths(sys).next()
+}
+
+pub fn open_one() -> Result<Device<std::fs::File>, FidoError> {
+    let mut paths = token_paths(std::path::Path::new("/sys/class/hidraw"));
+    let path = paths.next().ok_or(FidoError::NoToken)?;
+    if paths.next().is_some() {
+        return Err(protocol("insert only one FIDO token"));
+    }
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)?;
+    file.try_lock().map_err(|e| protocol(e.to_string()))?;
+    Device::init(file)
 }
 
 /// Open the first FIDO2 token.

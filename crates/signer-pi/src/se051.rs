@@ -1,6 +1,8 @@
 //! The SE051 secure element on the Pi's I2C bus, through Nitrokey's
 //! `se05x` driver (T=1 over I2C and the SE05x applet APDUs).
 
+pub mod enroll;
+
 use embedded_hal::i2c::{Error as _, ErrorKind, ErrorType, I2c, NoAcknowledgeSource, Operation};
 use linux_embedded_hal::{Delay, I2cdev};
 use se05x::se05x::commands::{
