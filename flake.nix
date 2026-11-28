@@ -35,6 +35,7 @@
             pkgs.wasmtime
             pkgs.python3
             pkgs.file
+            pkgs.lean4
           ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ piCc ];
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER = "${piCc.targetPrefix}cc";
