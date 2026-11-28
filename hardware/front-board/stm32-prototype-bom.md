@@ -1,6 +1,6 @@
 # STM32 signer bench prototype — bill of materials
 
-Quantities are for **one STM32H573 signer**. The two Raspberry Pi signers have their own cameras. The first STM build uses assembled modules and a solderless breadboard. Use the Discovery kit screen for initial testing. The full optical bench adds a larger display and an STM-connected camera so the phone exchange can run with the Pi disconnected.
+Quantities are for **one STM32H573 signer**. Both the Raspberry Pi and STM32 can exercise the base signer with a host webcam. The first STM build uses assembled modules and a solderless breadboard. Use the Discovery kit screen for initial testing. The full optical bench adds a larger display and an STM-connected camera so the phone exchange can run with the Pi disconnected.
 
 ## Order or reuse for the first build
 
@@ -23,6 +23,6 @@ Quantities are for **one STM32H573 signer**. The two Raspberry Pi signers have t
 
 For the camera-free bench, use the development computer’s webcam to relay the phone’s codes over USB. Use the same panel display, phone app and controller approval checks for both versions.
 
-Reuse the phone and development computer. The two **SC1223** camera modules are allocated to the Raspberry Pi rigs and use the Pi camera ribbon. The STM camera above is a separate engineering sample. The finished panel’s camera, LCD mounting and board layout are still under evaluation.
+Reuse the phone and development computer. The **SC1223** modules and Pi camera ribbons are optional for testing the one-hold optical variant on the Raspberry Pi rigs. The STM camera above is a separate engineering sample. The finished panel’s camera, LCD mounting and board layout are still under evaluation.
 
 **Verification status.** The shared joystick input library has compiled for the STM32H573 processor target. This parts selection is based on manufacturer documentation. The assembled STM rig still needs a pin assignment, board drivers and a physical test. Start with joystick entry and SE051 communication on the kit screen. For the optical test, connect the external LCD and camera together, scan the longest phone approval and recognition messages in both directions, and check that display and camera activity preserve button input. Chip-enforced PIN retries and key-use authorization are separate hardware tests.
